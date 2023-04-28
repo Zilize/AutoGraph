@@ -12,7 +12,7 @@ from taichi.lang.exception import (
 from taichi.lang.matrix import MatrixType
 from taichi.types import int32, ndarray_type
 
-from graph.graph_nodes import IntArgValue, MatrixArgValue, ArrayArgValue
+from graph.arg_value import IntArgValue, MatrixArgValue, ArrayArgValue
 
 
 def auto_graph(fn):

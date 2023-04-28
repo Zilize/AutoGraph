@@ -1,4 +1,5 @@
 from enum import Enum
+from graph.dispatch import Launch, Allocation
 
 import taichi as ti
 from taichi.graph import ArgKind
@@ -219,7 +220,7 @@ class MatrixArgValue(ArgValue):
                 self.dtype = None
 
     def __repr__(self):
-        return f"IntArgValue with Type({self.arg_type.name}), n({self.n}), m({self.m})"
+        return f"MatrixArgValue with Type({self.arg_type.name}), n({self.n}), m({self.m})"
 
     def __str__(self):
         if self.arg_type == MatrixArgValue.Type.CONST:
@@ -294,9 +295,40 @@ class MatrixArgValue(ArgValue):
 
 
 class ArrayArgValue(ArgValue):
-    def __init__(self, ndim):
+    class Type(Enum):
+        GRAPH_VAR = 1
+        ALLOC_VAR = 2
+
+    def __init__(self,
+                 arg_type: Type,
+                 graph_var_name=None,
+                 graph_var_ndim=None,
+                 graph_var_dtype=None,
+                 alloc_var=None,
+                 alloc_var_shape=None,
+                 alloc_var_dtype=None):
         super().__init__()
-        self.ndim = ndim
+        self.arg_type = arg_type
+        assert isinstance(self.arg_type, ArrayArgValue.Type)
+        if arg_type == ArrayArgValue.Type.GRAPH_VAR:
+            if graph_var_name is None or graph_var_ndim is None or graph_var_dtype is None:
+                raise TaichiCompilationError(f"Argument graph_var_name, graph_var_ndim, graph_var_dtype should not be "
+                                             f"None with Type.GRAPH_VAR")
+            self.graph_var_name = graph_var_name
+            self.shape = None
+            self.ndim = graph_var_ndim
+            self.dtype = graph_var_dtype
+        elif arg_type == ArrayArgValue.Type.ALLOC_VAR:
+            if alloc_var is None or alloc_var_shape is None or alloc_var_dtype is None:
+                raise TaichiCompilationError(f"Argument graph_var_name, graph_var_ndim, graph_var_dtype should not be "
+                                             f"None with Type.ALLOC_VAR")
+            self.alloc_var = alloc_var
+            assert isinstance(self.alloc_var, Allocation)
+            self.ndim = self.alloc_var.ndim
+            self.dtype = alloc_var_dtype
+
+    def __repr__(self):
+        return f"ArrayArgValue with Type({self.arg_type.name})"
 
 
 if __name__ == '__main__':
@@ -304,7 +336,12 @@ if __name__ == '__main__':
     b = IntArgValue(IntArgValue.Type.CONST, const_value=2)
     x = IntArgValue(IntArgValue.Type.GRAPH_VAR, graph_var_name="x")
     x0 = IntArgValue(IntArgValue.Type.ALIAS_VAR, alias_var=x)
-    y = IntArgValue(IntArgValue.Type.SHAPE_VAR, shape_var_array=ArrayArgValue(2), shape_var_dim=1)
+    y = IntArgValue(IntArgValue.Type.SHAPE_VAR,
+                    shape_var_array=ArrayArgValue(ArrayArgValue.Type.GRAPH_VAR,
+                                                  graph_var_name='arr',
+                                                  graph_var_ndim=2,
+                                                  graph_var_dtype=ti.f32),
+                    shape_var_dim=1)
     t0 = (a + x) / (b - x0) * y
     t1 = t0 + a
     print(t0)
