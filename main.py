@@ -50,7 +50,10 @@ def run_demo(
 
 if __name__ == '__main__':
     ti.init(arch=ti.cpu)
-    demo()
-    # arr = ti.ndarray(dtype=ti.f32, shape=4)
-    # run_demo(4, arr)
-    # print(arr[0])
+
+    a = ti.Vector([1, 2, 3])
+    print(a)
+    b = ti.Matrix([[1, 2, 3], [4, 5, 6]])
+    c = ti.Matrix([[1, 2, 3], [4, 5, 6]])
+    d = b * c
+    print(d)
