@@ -4,6 +4,7 @@ import inspect
 import functools
 from typing import cast
 
+from taichi.lang.kernel_impl import Kernel
 from taichi.lang.exception import (
     TaichiRuntimeError,
     TaichiRuntimeTypeError,
@@ -92,16 +93,18 @@ class AutoGraph:
                 )
             else:
                 if isinstance(annotation, ndarray_type.NdarrayType):
-                    pass
+                    raise NotImplementedError
                 elif isinstance(annotation, MatrixType):
-                    self.graph_arguments[param.name] = MatrixArgValue(annotation.n, annotation.m, annotation.dtype)
+                    raise NotImplementedError
                 elif id(annotation) in [id(int32), id(int)]:
-                    pass
+                    raise NotImplementedError
                 else:
-                    raise TaichiSyntaxError(f"Invalid type annotation (argument {i}) of Taichi auto graph: {annotation}")
+                    raise TaichiSyntaxError(f"Invalid type annotation of Taichi auto graph: {annotation}")
 
     def extract_kernels(self):
-        pass
+        for key, value in self.func.__globals__.items():
+            if inspect.isfunction(value) and hasattr(value, '_primal') and isinstance(value._primal, Kernel):
+                self.global_kernels[key] = value
 
     def parse_function_body(self):
         source = inspect.getsource(self.func)
@@ -133,9 +136,3 @@ class AutoGraph:
 
     def parse_integer_calculation(self, node):
         pass
-
-
-
-
-
-
