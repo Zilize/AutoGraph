@@ -26,9 +26,12 @@ def kernel_update(arr: ti.types.ndarray(dtype=ti.f32, ndim=1),
 
 @auto_graph
 def run_sim(i: int, j: ti.i32, x: ti.types.ndarray(dtype=ti.f32, ndim=2)):
-    _width = (i + j) * 1
+    # v = ti.Vector([1, 2, 3])
+    s = x.shape[0]
+    _width = (2 + (i + j) * 1) * (5 + 6 / 7)
     _width = _width * 1 + 0
     _delta = 1
+    __delta = _delta
     width = (_width / _delta)
     delta = ti.ndarray(dtype=ti.f32, shape=(x.shape[0], width))
     kernel_delta(delta)
@@ -50,6 +53,8 @@ def run_demo(
 
 if __name__ == '__main__':
     ti.init(arch=ti.cpu)
+
+    aaa = ti.Vector([1, 2, 3])
 
     a = ti.Vector([1, 2, 3])
     print(a)

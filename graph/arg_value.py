@@ -298,6 +298,7 @@ class ArrayArgValue(ArgValue):
     class Type(Enum):
         GRAPH_VAR = 1
         ALLOC_VAR = 2
+        ALIAS_VAR = 3
 
     def __init__(self,
                  arg_type: Type,
@@ -306,7 +307,8 @@ class ArrayArgValue(ArgValue):
                  graph_var_dtype=None,
                  alloc_var=None,
                  alloc_var_shape=None,
-                 alloc_var_dtype=None):
+                 alloc_var_dtype=None,
+                 alias_var=None):
         super().__init__()
         self.arg_type = arg_type
         assert isinstance(self.arg_type, ArrayArgValue.Type)
@@ -326,6 +328,10 @@ class ArrayArgValue(ArgValue):
             assert isinstance(self.alloc_var, Allocation)
             self.ndim = self.alloc_var.ndim
             self.dtype = alloc_var_dtype
+        elif arg_type == ArrayArgValue.Type.ALIAS_VAR:
+            if alias_var is None:
+                raise TaichiCompilationError(f"Argument alias_var should not be None with Type.ALIAS_VAR")
+            self.alias_var = alias_var
 
     def __repr__(self):
         return f"ArrayArgValue with Type({self.arg_type.name})"
