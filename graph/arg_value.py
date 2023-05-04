@@ -306,8 +306,6 @@ class ArrayArgValue(ArgValue):
                  graph_var_ndim=None,
                  graph_var_dtype=None,
                  alloc_var=None,
-                 alloc_var_shape=None,
-                 alloc_var_dtype=None,
                  alias_var=None):
         super().__init__()
         self.arg_type = arg_type
@@ -321,17 +319,21 @@ class ArrayArgValue(ArgValue):
             self.ndim = graph_var_ndim
             self.dtype = graph_var_dtype
         elif arg_type == ArrayArgValue.Type.ALLOC_VAR:
-            if alloc_var is None or alloc_var_shape is None or alloc_var_dtype is None:
-                raise TaichiCompilationError(f"Argument graph_var_name, graph_var_ndim, graph_var_dtype should not be "
-                                             f"None with Type.ALLOC_VAR")
+            if alloc_var is None:
+                raise TaichiCompilationError(f"Argument alloc_var should not be None with Type.ALLOC_VAR")
             self.alloc_var = alloc_var
             assert isinstance(self.alloc_var, Allocation)
+            self.shape = self.alloc_var.shape
             self.ndim = self.alloc_var.ndim
-            self.dtype = alloc_var_dtype
+            self.dtype = self.alloc_var.dtype
         elif arg_type == ArrayArgValue.Type.ALIAS_VAR:
             if alias_var is None:
                 raise TaichiCompilationError(f"Argument alias_var should not be None with Type.ALIAS_VAR")
             self.alias_var = alias_var
+            assert isinstance(self.alias_var, ArrayArgValue)
+            self.shape = self.alias_var.shape
+            self.ndim = self.alias_var.ndim
+            self.dtype = self.alias_var.dtype
 
     def __repr__(self):
         return f"ArrayArgValue with Type({self.arg_type.name})"

@@ -65,6 +65,7 @@ class AutoGraph:
         self.extract_kernels()
         self.launches = []
         self.allocated_arrays = []
+        self.shape_arguments = []
         self.parse_function_body()
 
     def __call__(self, *args, **kwargs):
@@ -234,5 +235,29 @@ class AutoGraph:
     def parse_binary_operation(self, node):
         self.variables[node.targets[0].id] = self._construct_binary_operation_graph(node.value)
 
+    def _construct_shape_argument(self, node):
+        assert isinstance(node, ast.Subscript)
+        if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
+            raise TaichiCompilationError(f"Subscript index must be an integer literal value")
+        if isinstance(node.value, ast.Attribute) and node.value.attr == 'shape':
+            assert isinstance(node.value.value, ast.Name)
+            if node.value.value.id not in self.variables:
+                raise TaichiCompilationError(f"Undefined variable {node.value.value.id}")
+            array_var = self.variables[node.value.value.id]
+            if not isinstance(array_var, ArrayArgValue):
+                raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
+            if node.slice.value < 0 or node.slice.value >= array_var.ndim:
+                raise TaichiCompilationError(f"The index of shape is out of range")
+            shape_argument = IntArgValue(
+                arg_type=IntArgValue.Type.SHAPE_VAR,
+                shape_var_array=array_var,
+                shape_var_dim=node.slice.value
+            )
+            self.shape_arguments.append(shape_argument)
+            return shape_argument
+        else:
+            raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
+
     def parse_shape_assignment(self, node):
-        pass
+        self.variables[node.targets[0].id] = self._construct_shape_argument(node.value)
+

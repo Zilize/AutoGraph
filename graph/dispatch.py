@@ -15,3 +15,5 @@ class Allocation(Dispatch):
     def __init__(self):
         super().__init__()
         self.ndim = None
+        self.shape = None
+        self.dtype = None
