@@ -4,6 +4,8 @@ import inspect
 import functools
 from typing import cast
 
+import taichi.lang.impl as impl
+import taichi.types
 from taichi import ndarray, ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.exception import (
@@ -12,9 +14,10 @@ from taichi.lang.exception import (
     TaichiCompilationError
 )
 from taichi.lang.matrix import VectorType, MatrixType
-from taichi.types import int32, ndarray_type
+from taichi.types import int32, float32, ndarray_type, primitive_types
 
 from graph.arg_value import IntArgValue, MatrixArgValue, ArrayArgValue
+from graph.dispatch import Launch, Allocation
 
 
 def auto_graph(fn):
@@ -184,6 +187,10 @@ class AutoGraph:
                     args.append(arg.value)
                 elif isinstance(arg, ast.Attribute):
                     args.append(self._visit_attribute(arg))
+                elif isinstance(arg, ast.Name) and arg.id == 'int':
+                    args.append(impl.get_runtime().default_ip)
+                elif isinstance(arg, ast.Name) and arg.id == 'float':
+                    args.append(impl.get_runtime().default_fp)
                 else:
                     raise TaichiCompilationError(f"Unsupported arg type {type(arg)} in Taichi auto-graph")
             kwargs = {}
@@ -192,22 +199,104 @@ class AutoGraph:
                     kwargs[keyword.arg] = keyword.value.value
                 elif isinstance(keyword.value, ast.Attribute):
                     kwargs[keyword.arg] = self._visit_attribute(keyword.value)
+                elif isinstance(keyword.value, ast.Name) and keyword.value.id == 'int':
+                    kwargs[keyword.arg] = impl.get_runtime().default_ip
+                elif isinstance(keyword.value, ast.Name) and keyword.value.id == 'float':
+                    kwargs[keyword.arg] = impl.get_runtime().default_fp
                 else:
                     raise TaichiCompilationError(f"Unsupported arg type {type(keyword.value)} in Taichi auto-graph")
             return func(*args, **kwargs)
         else:
             raise TaichiCompilationError(f"Unsupported function type {type(node)} in Taichi auto-graph")
 
+    def _cook_node_dtype(self, node):
+        if isinstance(node, ast.Attribute):
+            return self._visit_attribute(node)
+        elif isinstance(node, ast.Call):
+            return self._visit_function(node)
+        elif isinstance(node, ast.Name) and node.id == 'int':
+            return impl.get_runtime().default_ip
+        elif isinstance(node, ast.Name) and node.id == 'float':
+            return impl.get_runtime().default_fp
+        else:
+            raise TaichiCompilationError(f"Invalid dtype {ast.unparse(node)}")
+
+    def _cook_node_shape(self, node):
+        if isinstance(node, ast.Tuple):
+            shape_list = []
+            for shape_element in node.elts:
+                shape_list.append(self._construct_binary_operation_graph(shape_element))
+        else:
+            shape_list = [self._construct_binary_operation_graph(node)]
+        return shape_list
+
+    @staticmethod
+    def _cook_node_integer(node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        else:
+            raise TaichiCompilationError(f"n and m must be literal integer values")
+
+    def _cook_allocation_ndarray(self, dtype, shape):
+        dtype = self._cook_node_dtype(dtype)
+        shape = self._cook_node_shape(shape)
+        return Allocation(dtype=dtype, shape=shape)
+
+    def _cook_allocation_scalar_ndarray(self, dtype, arr_shape):
+        dtype = self._cook_node_dtype(dtype)
+        assert id(dtype) in primitive_types.type_ids
+        shape = self._cook_node_shape(arr_shape)
+        return Allocation(dtype=dtype, shape=shape)
+
+    def _cook_allocation_vector_ndarray(self, n, dtype, shape):
+        n = self._cook_node_integer(n)
+        dtype = self._cook_node_dtype(dtype)
+        assert id(dtype) in primitive_types.type_ids
+        shape = self._cook_node_shape(shape)
+        return Allocation(dtype=taichi.types.vector(n=n, dtype=dtype), shape=shape)
+
+    def _cook_allocation_matrix_ndarray(self, n, m, dtype, shape):
+        n = self._cook_node_integer(n)
+        m = self._cook_node_integer(m)
+        dtype = self._cook_node_dtype(dtype)
+        assert id(dtype) in primitive_types.type_ids
+        shape = self._cook_node_shape(shape)
+        return Allocation(dtype=taichi.types.matrix(n=n, m=m, dtype=dtype), shape=shape)
+
     def parse_call_assignment(self, node):
         func = self._visit_function(node.value.func)
         if func == ndarray:
-            pass
+            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            array = ArrayArgValue(
+                arg_type=ArrayArgValue.Type.ALLOC_VAR,
+                alloc_var=self._cook_allocation_ndarray(*args, **kwargs)
+            )
+            self.allocated_arrays.append(array)
+            self.variables[node.targets[0].id] = array
         elif func == ScalarNdarray:
-            pass
+            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            array = ArrayArgValue(
+                arg_type=ArrayArgValue.Type.ALLOC_VAR,
+                alloc_var=self._cook_allocation_scalar_ndarray(*args, **kwargs)
+            )
+            self.allocated_arrays.append(array)
+            self.variables[node.targets[0].id] = array
         elif func == VectorNdarray:
-            pass
+            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            array = ArrayArgValue(
+                arg_type=ArrayArgValue.Type.ALLOC_VAR,
+                alloc_var=self._cook_allocation_vector_ndarray(*args, **kwargs)
+            )
+            self.allocated_arrays.append(array)
+            self.variables[node.targets[0].id] = array
         elif func == MatrixNdarray:
-            pass
+            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            array = ArrayArgValue(
+                arg_type=ArrayArgValue.Type.ALLOC_VAR,
+                alloc_var=self._cook_allocation_matrix_ndarray(*args, **kwargs)
+            )
+            self.allocated_arrays.append(array)
+            self.variables[node.targets[0].id] = array
         elif func == Vector or func == Matrix or isinstance(func, VectorType) or isinstance(func, MatrixType):
             if len(node.value.args) != 1:
                 raise TaichiCompilationError(f"Unsupported argument number for {func}")
@@ -288,7 +377,7 @@ class AutoGraph:
                 raise TaichiCompilationError(f"Taichi Ndarray is unsupported in binary operation")
             return self.variables[node.id]
         elif isinstance(node, ast.Subscript):
-            raise NotImplementedError
+            return self._construct_shape_argument(node)
         else:
             raise TaichiCompilationError(f"Value type {type(node)} is unsupported in binary operation")
 

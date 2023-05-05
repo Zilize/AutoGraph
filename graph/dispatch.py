@@ -12,8 +12,8 @@ class Launch(Dispatch):
 
 
 class Allocation(Dispatch):
-    def __init__(self):
+    def __init__(self, dtype, shape):
         super().__init__()
-        self.ndim = None
-        self.shape = None
-        self.dtype = None
+        self.dtype = dtype
+        self.shape = shape
+        self.ndim = len(shape)
