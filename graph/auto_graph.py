@@ -4,13 +4,14 @@ import inspect
 import functools
 from typing import cast
 
+from taichi import ndarray, ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.exception import (
     TaichiRuntimeError,
     TaichiRuntimeTypeError,
     TaichiCompilationError
 )
-from taichi.lang.matrix import MatrixType
+from taichi.lang.matrix import VectorType, MatrixType
 from taichi.types import int32, ndarray_type
 
 from graph.arg_value import IntArgValue, MatrixArgValue, ArrayArgValue
@@ -159,8 +160,67 @@ class AutoGraph:
     def parse_kernel_launch(self, node):
         pass
 
+    def _visit_attribute(self, node):
+        if isinstance(node, ast.Name):
+            if node.id in self.func.__globals__:
+                return self.func.__globals__[node.id]
+            else:
+                raise TaichiCompilationError(f"Undefined variable {node.id} in global scope")
+        elif isinstance(node, ast.Attribute):
+            value = self._visit_attribute(node.value)
+            if hasattr(value, node.attr):
+                return getattr(value, node.attr)
+            else:
+                raise TaichiCompilationError(f"Undefined attribute {node.attr} in {value}")
+
+    def _visit_function(self, node):
+        if isinstance(node, ast.Attribute):
+            return self._visit_attribute(node)
+        elif isinstance(node, ast.Call):
+            func = self._visit_function(node.func)
+            args = []
+            for arg in node.args:
+                if isinstance(arg, ast.Constant):
+                    args.append(arg.value)
+                elif isinstance(arg, ast.Attribute):
+                    args.append(self._visit_attribute(arg))
+                else:
+                    raise TaichiCompilationError(f"Unsupported arg type {type(arg)} in Taichi auto-graph")
+            kwargs = {}
+            for keyword in node.keywords:
+                if isinstance(keyword.value, ast.Constant):
+                    kwargs[keyword.arg] = keyword.value.value
+                elif isinstance(keyword.value, ast.Attribute):
+                    kwargs[keyword.arg] = self._visit_attribute(keyword.value)
+                else:
+                    raise TaichiCompilationError(f"Unsupported arg type {type(keyword.value)} in Taichi auto-graph")
+            return func(*args, **kwargs)
+        else:
+            raise TaichiCompilationError(f"Unsupported function type {type(node)} in Taichi auto-graph")
+
     def parse_call_assignment(self, node):
-        pass
+        func = self._visit_function(node.value.func)
+        if func == ndarray:
+            pass
+        elif func == ScalarNdarray:
+            pass
+        elif func == VectorNdarray:
+            pass
+        elif func == MatrixNdarray:
+            pass
+        elif func == Vector or func == Matrix or isinstance(func, VectorType) or isinstance(func, MatrixType):
+            if len(node.value.args) != 1:
+                raise TaichiCompilationError(f"Unsupported argument number for {func}")
+            try:
+                const_matrix = ast.literal_eval(ast.unparse(node.value.args[0]))
+            except Exception:
+                raise TaichiCompilationError(f"Argument for {func} must be literal lists")
+            self.variables[node.targets[0].id] = MatrixArgValue(
+                arg_type=MatrixArgValue.Type.CONST,
+                const_value=func(const_matrix)
+            )
+        else:
+            raise TaichiCompilationError(f"Unsupported function call {type(func)} in Taichi auto-graph")
 
     def parse_const_assignment(self, node):
         if not isinstance(node.value.value, int):
@@ -260,4 +320,3 @@ class AutoGraph:
 
     def parse_shape_assignment(self, node):
         self.variables[node.targets[0].id] = self._construct_shape_argument(node.value)
-

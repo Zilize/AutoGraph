@@ -26,7 +26,15 @@ def kernel_update(arr: ti.types.ndarray(dtype=ti.f32, ndim=1),
 
 @auto_graph
 def run_sim(i: int, j: ti.i32, x: ti.types.ndarray(dtype=ti.f32, ndim=2)):
-    # v = ti.Vector([1, 2, 3])
+    a0 = ti.ndarray(dtype=ti.f32, shape=(3, 4))
+    a1 = ti.ScalarNdarray(dtype=ti.f32, arr_shape=(3, 4))
+    a2 = ti.VectorNdarray(n=3, dtype=ti.f32, shape=(3, 4))
+    a3 = ti.MatrixNdarray(n=3, m=3, dtype=ti.f32, shape=(3, 4))
+    v0 = ti.Vector([1.0, 2.0, 3.0])
+    v1 = ti.Matrix([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    v2 = ti.types.vector(n=3, dtype=ti.f32)([1.0, 2.0, 3.0, 4.0])
+    v3 = ti.types.matrix(n=2, m=3, dtype=ti.f32)([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+
     s = x.shape[0]
     _width = (2 + (i + j) * 1) * (5 + 6 / 7)
     _width = _width * 1 + 0
@@ -51,14 +59,16 @@ def run_demo(
     kernel_update(x, delta)
 
 
+def te(a, b, c, d):
+    print(a, b, c, d)
+
+
 if __name__ == '__main__':
     ti.init(arch=ti.cpu)
 
-    aaa = ti.Vector([1, 2, 3])
-
-    a = ti.Vector([1, 2, 3])
-    print(a)
-    b = ti.Matrix([[1, 2, 3], [4, 5, 6]])
-    c = ti.Matrix([[1, 2, 3], [4, 5, 6]])
-    d = b * c
-    print(d)
+    args = [1, 2]
+    kwargs = {
+        'c': 3,
+        'd': 4
+    }
+    te(*args, **kwargs)
