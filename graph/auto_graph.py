@@ -184,8 +184,7 @@ class AutoGraph:
                 raise TaichiCompilationError(f"Invalid argument in kernel {kernel_fn.__name__}")
         if not self._check_kernel_arguments(parameters, kernel_arguments):
             raise TaichiCompilationError(f"Argument type error in kernel {kernel_fn.__name__}")
-
-        raise NotImplementedError
+        self.launches.append(Launch(kernel_fn, kernel_arguments))
 
     def _visit_attribute(self, node):
         if isinstance(node, ast.Name):
