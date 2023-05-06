@@ -144,14 +144,14 @@ class AutoGraph:
                 assert isinstance(statement.targets[0], ast.Name)
                 if isinstance(statement.value, ast.Call):
                     self.parse_call_assignment(statement)
-                elif isinstance(statement.value, ast.Constant):
-                    self.parse_const_assignment(statement)
                 elif isinstance(statement.value, ast.Name):
                     self.parse_alias_assignment(statement)
-                elif isinstance(statement.value, ast.BinOp):
-                    self.parse_binary_operation(statement)
+                elif isinstance(statement.value, ast.Constant):
+                    self.parse_expression_assignment(statement)
                 elif isinstance(statement.value, ast.Subscript):
-                    self.parse_shape_assignment(statement)
+                    self.parse_expression_assignment(statement)
+                elif isinstance(statement.value, ast.BinOp):
+                    self.parse_expression_assignment(statement)
                 else:
                     raise TaichiCompilationError(f"Assignment value type {type(statement.value)} is unsupported in "
                                                  f"Taichi auto-graph")
@@ -225,9 +225,9 @@ class AutoGraph:
         if isinstance(node, ast.Tuple):
             shape_list = []
             for shape_element in node.elts:
-                shape_list.append(self._construct_binary_operation_graph(shape_element))
+                shape_list.append(self._construct_expression(shape_element))
         else:
-            shape_list = [self._construct_binary_operation_graph(node)]
+            shape_list = [self._construct_expression(node)]
         return shape_list
 
     @staticmethod
@@ -311,38 +311,50 @@ class AutoGraph:
         else:
             raise TaichiCompilationError(f"Unsupported function call {type(func)} in Taichi auto-graph")
 
-    def parse_const_assignment(self, node):
-        if not isinstance(node.value.value, int):
-            raise TaichiCompilationError(f"Literal value assignment of datatype {type(node.value.value)} is "
-                                         f"unsupported in Taichi auto-graph")
-        self.variables[node.targets[0].id] = IntArgValue(
-            arg_type=IntArgValue.Type.CONST,
-            const_value=node.value.value
-        )
-
     def parse_alias_assignment(self, node):
         if node.value.id not in self.variables:
             raise TaichiCompilationError(f"Undefined variable {node.value.id}")
-        if isinstance(self.variables[node.value.id], IntArgValue):
-            self.variables[node.targets[0].id] = IntArgValue(
-                arg_type=IntArgValue.Type.ALIAS_VAR,
-                alias_var=self.variables[node.value.id]
-            )
-        elif isinstance(self.variables[node.value.id], MatrixArgValue):
-            self.variables[node.targets[0].id] = MatrixArgValue(
-                arg_type=MatrixArgValue.Type.ALIAS_VAR,
-                alias_var=self.variables[node.value.id]
-            )
-        elif isinstance(self.variables[node.value.id], ArrayArgValue):
-            self.variables[node.targets[0].id] = ArrayArgValue(
-                arg_type=ArrayArgValue.Type.ALIAS_VAR,
-                alias_var=self.variables[node.value.id]
-            )
+        self.variables[node.targets[0].id] = self.variables[node.value.id]
 
-    def _construct_binary_operation_graph(self, node):
-        if isinstance(node, ast.BinOp):
-            left = self._construct_binary_operation_graph(node.left)
-            right = self._construct_binary_operation_graph(node.right)
+    def _construct_expression(self, node):
+        if isinstance(node, ast.Name):
+            if node.id not in self.variables:
+                raise TaichiCompilationError(f"Undefined variable {node.id}")
+            if not isinstance(self.variables[node.id], IntArgValue) and \
+                    not isinstance(self.variables[node.id], MatrixArgValue):
+                raise TaichiCompilationError(f"Taichi Ndarray is unsupported in binary operation")
+            return self.variables[node.id]
+        elif isinstance(node, ast.Constant):
+            if not isinstance(node.value, int):
+                raise TaichiCompilationError(f"Literal value type {type(node)} is unsupported in Taichi auto-graph")
+            return IntArgValue(
+                arg_type=IntArgValue.Type.CONST,
+                const_value=node.value
+            )
+        elif isinstance(node, ast.Subscript):
+            if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
+                raise TaichiCompilationError(f"Subscript index must be an integer literal value")
+            if isinstance(node.value, ast.Attribute) and node.value.attr == 'shape':
+                assert isinstance(node.value.value, ast.Name)
+                if node.value.value.id not in self.variables:
+                    raise TaichiCompilationError(f"Undefined variable {node.value.value.id}")
+                array_var = self.variables[node.value.value.id]
+                if not isinstance(array_var, ArrayArgValue):
+                    raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
+                if node.slice.value < 0 or node.slice.value >= array_var.ndim:
+                    raise TaichiCompilationError(f"The index of shape is out of range")
+                shape_argument = IntArgValue(
+                    arg_type=IntArgValue.Type.SHAPE_VAR,
+                    shape_var_array=array_var,
+                    shape_var_dim=node.slice.value
+                )
+                self.shape_arguments.append(shape_argument)
+                return shape_argument
+            else:
+                raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
+        elif isinstance(node, ast.BinOp):
+            left = self._construct_expression(node.left)
+            right = self._construct_expression(node.right)
             assert isinstance(left, IntArgValue) or isinstance(left, MatrixArgValue)
 
             if type(left) == type(right):
@@ -362,50 +374,8 @@ class AutoGraph:
                     raise TaichiCompilationError(f"Unsupported binary operator {type(node.op)} between {type(left)}")
             else:
                 raise TaichiCompilationError(f"Different types in binary operation: {type(left)} and {type(right)}")
-        elif isinstance(node, ast.Constant):
-            if not isinstance(node.value, int):
-                raise TaichiCompilationError(f"Value type {type(node)} is unsupported in binary operation")
-            return IntArgValue(
-                arg_type=IntArgValue.Type.CONST,
-                const_value=node.value
-            )
-        elif isinstance(node, ast.Name):
-            if node.id not in self.variables:
-                raise TaichiCompilationError(f"Undefined variable {node.id}")
-            if not isinstance(self.variables[node.id], IntArgValue) and \
-                    not isinstance(self.variables[node.id], MatrixArgValue):
-                raise TaichiCompilationError(f"Taichi Ndarray is unsupported in binary operation")
-            return self.variables[node.id]
-        elif isinstance(node, ast.Subscript):
-            return self._construct_shape_argument(node)
         else:
             raise TaichiCompilationError(f"Value type {type(node)} is unsupported in binary operation")
 
-    def parse_binary_operation(self, node):
-        self.variables[node.targets[0].id] = self._construct_binary_operation_graph(node.value)
-
-    def _construct_shape_argument(self, node):
-        assert isinstance(node, ast.Subscript)
-        if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
-            raise TaichiCompilationError(f"Subscript index must be an integer literal value")
-        if isinstance(node.value, ast.Attribute) and node.value.attr == 'shape':
-            assert isinstance(node.value.value, ast.Name)
-            if node.value.value.id not in self.variables:
-                raise TaichiCompilationError(f"Undefined variable {node.value.value.id}")
-            array_var = self.variables[node.value.value.id]
-            if not isinstance(array_var, ArrayArgValue):
-                raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
-            if node.slice.value < 0 or node.slice.value >= array_var.ndim:
-                raise TaichiCompilationError(f"The index of shape is out of range")
-            shape_argument = IntArgValue(
-                arg_type=IntArgValue.Type.SHAPE_VAR,
-                shape_var_array=array_var,
-                shape_var_dim=node.slice.value
-            )
-            self.shape_arguments.append(shape_argument)
-            return shape_argument
-        else:
-            raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
-
-    def parse_shape_assignment(self, node):
-        self.variables[node.targets[0].id] = self._construct_shape_argument(node.value)
+    def parse_expression_assignment(self, node):
+        self.variables[node.targets[0].id] = self._construct_expression(node.value)

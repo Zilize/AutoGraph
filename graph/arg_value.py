@@ -17,8 +17,7 @@ class IntArgValue(ArgValue):
         CONST = 1      # x = 1
         GRAPH_VAR = 2  # x: ti.i32
         SHAPE_VAR = 3  # x = arr.shape[0]
-        ALIAS_VAR = 4  # x = x_0
-        BINOP_VAR = 5  # x = x + 1
+        BINOP_VAR = 4  # x = x + 1
 
     class Op(Enum):
         ADD = 1
@@ -33,7 +32,6 @@ class IntArgValue(ArgValue):
                  graph_var_name=None,
                  shape_var_array=None,
                  shape_var_dim=None,
-                 alias_var=None,
                  binop_var_left=None,
                  binop_var_op=None,
                  binop_var_right=None
@@ -59,10 +57,6 @@ class IntArgValue(ArgValue):
             assert isinstance(self.shape_var_array, ArrayArgValue)
             if self.shape_var_dim < 0 or self.shape_var_dim >= self.shape_var_array.ndim:
                 raise TaichiRuntimeTypeError(f"The index of shape is out of range")
-        elif arg_type == IntArgValue.Type.ALIAS_VAR:
-            if alias_var is None:
-                raise TaichiCompilationError(f"Argument alias_var should not be None with Type.ALIAS_VAR")
-            self.alias_var = alias_var
         elif arg_type == IntArgValue.Type.BINOP_VAR:
             if binop_var_left is None or binop_var_op is None or binop_var_right is None:
                 raise TaichiCompilationError(f"Argument binop_var_left, binop_var_op and binop_var_right should not "
@@ -82,8 +76,6 @@ class IntArgValue(ArgValue):
             return self.graph_var_name
         elif self.arg_type == IntArgValue.Type.SHAPE_VAR:
             return f"arr({id(self.shape_var_array)}).shape[{self.shape_var_dim}]"
-        elif self.arg_type == IntArgValue.Type.ALIAS_VAR:
-            return str(self.alias_var)
         elif self.arg_type == IntArgValue.Type.BINOP_VAR:
             op = None
             if self.binop_var_op == IntArgValue.Op.ADD:
@@ -143,8 +135,7 @@ class MatrixArgValue(ArgValue):
     class Type(Enum):
         CONST = 1      # x = [[1, 2], [3, 4]]
         GRAPH_VAR = 2  # x: ti.types.matrix(n=2, m=2, dtype=ti.i32)
-        ALIAS_VAR = 4  # x = x_0
-        BINOP_VAR = 5  # x = x + [[1, 1], [1, 1]]
+        BINOP_VAR = 3  # x = x + [[1, 1], [1, 1]]
 
     class Op(Enum):
         ADD = 1
@@ -161,7 +152,6 @@ class MatrixArgValue(ArgValue):
                  graph_var_n=None,
                  graph_var_m=None,
                  graph_var_dtype=None,
-                 alias_var=None,
                  binop_var_left=None,
                  binop_var_op=None,
                  binop_var_right=None
@@ -185,14 +175,6 @@ class MatrixArgValue(ArgValue):
             self.n = graph_var_n
             self.m = graph_var_m
             self.dtype = graph_var_dtype
-        elif arg_type == MatrixArgValue.Type.ALIAS_VAR:
-            if alias_var is None:
-                raise TaichiCompilationError(f"Argument alias_var should not be None with Type.ALIAS_VAR")
-            self.alias_var = alias_var
-            assert isinstance(self.alias_var, MatrixArgValue)
-            self.n = self.alias_var.n
-            self.m = self.alias_var.m
-            self.dtype = self.alias_var.dtype
         elif arg_type == MatrixArgValue.Type.BINOP_VAR:
             if binop_var_left is None or binop_var_op is None or binop_var_right is None:
                 raise TaichiCompilationError(f"Argument binop_var_left, binop_var_op and binop_var_right should not "
@@ -227,8 +209,6 @@ class MatrixArgValue(ArgValue):
             return str(self.const_value.to_list())
         elif self.arg_type == MatrixArgValue.Type.GRAPH_VAR:
             return self.graph_var_name
-        elif self.arg_type == MatrixArgValue.Type.ALIAS_VAR:
-            return str(self.alias_var)
         elif self.arg_type == MatrixArgValue.Type.BINOP_VAR:
             op = None
             if self.binop_var_op == MatrixArgValue.Op.ADD:
@@ -298,7 +278,6 @@ class ArrayArgValue(ArgValue):
     class Type(Enum):
         GRAPH_VAR = 1
         ALLOC_VAR = 2
-        ALIAS_VAR = 3
 
     def __init__(self,
                  arg_type: Type,
@@ -326,14 +305,6 @@ class ArrayArgValue(ArgValue):
             self.shape = self.alloc_var.shape
             self.ndim = self.alloc_var.ndim
             self.dtype = self.alloc_var.dtype
-        elif arg_type == ArrayArgValue.Type.ALIAS_VAR:
-            if alias_var is None:
-                raise TaichiCompilationError(f"Argument alias_var should not be None with Type.ALIAS_VAR")
-            self.alias_var = alias_var
-            assert isinstance(self.alias_var, ArrayArgValue)
-            self.shape = self.alias_var.shape
-            self.ndim = self.alias_var.ndim
-            self.dtype = self.alias_var.dtype
 
     def __repr__(self):
         return f"ArrayArgValue with Type({self.arg_type.name})"
@@ -343,14 +314,13 @@ if __name__ == '__main__':
     a = IntArgValue(IntArgValue.Type.CONST, const_value=1)
     b = IntArgValue(IntArgValue.Type.CONST, const_value=2)
     x = IntArgValue(IntArgValue.Type.GRAPH_VAR, graph_var_name="x")
-    x0 = IntArgValue(IntArgValue.Type.ALIAS_VAR, alias_var=x)
     y = IntArgValue(IntArgValue.Type.SHAPE_VAR,
                     shape_var_array=ArrayArgValue(ArrayArgValue.Type.GRAPH_VAR,
                                                   graph_var_name='arr',
                                                   graph_var_ndim=2,
                                                   graph_var_dtype=ti.f32),
                     shape_var_dim=1)
-    t0 = (a + x) / (b - x0) * y
+    t0 = (a + x) / (b * y)
     t1 = t0 + a
     print(t0)
     print(t1)
@@ -362,6 +332,5 @@ if __name__ == '__main__':
     b = MatrixArgValue(MatrixArgValue.Type.CONST, const_value=mat_b)
     c = MatrixArgValue(MatrixArgValue.Type.CONST, const_value=mat_c)
     x = MatrixArgValue(MatrixArgValue.Type.GRAPH_VAR, graph_var_name='x', graph_var_n=2, graph_var_m=2, graph_var_dtype=ti.f32)
-    x0 = MatrixArgValue(MatrixArgValue.Type.ALIAS_VAR, alias_var=x)
     t = (a + b * x) @ c
     print(t)
