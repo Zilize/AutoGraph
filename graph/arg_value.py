@@ -67,7 +67,7 @@ class IntArgValue(ArgValue):
             assert isinstance(self.binop_var_op, IntArgValue.Op)
 
     def __repr__(self):
-        return f"IntArgValue with Type({self.arg_type.name})"
+        return self.__str__()
 
     def __str__(self):
         if self.arg_type == IntArgValue.Type.CONST:
@@ -307,7 +307,7 @@ class ArrayArgValue(ArgValue):
             self.dtype = self.alloc_var.dtype
 
     def __repr__(self):
-        return f"ArrayArgValue with Type({self.arg_type.name})"
+        return f"ArrayArgValue with Type({self.arg_type.name}), Id({id(self)})"
 
 
 if __name__ == '__main__':

@@ -63,6 +63,7 @@ class AutoGraph:
     def __init__(self, _func):
         self.func = _func
         self.graph_arguments = {}
+        self.graph_argument_ids = []
         self.variables = {}
         self.extract_arguments()
         self.global_kernels = {}
@@ -121,6 +122,7 @@ class AutoGraph:
                 else:
                     raise TaichiCompilationError(f"Invalid type annotation of Taichi auto-graph: {annotation}")
         for arg_name in self.graph_arguments:
+            self.graph_argument_ids.append(id(self.graph_arguments[arg_name]))
             self.variables[arg_name] = self.graph_arguments[arg_name]
 
     def extract_kernels(self):
@@ -343,13 +345,16 @@ class AutoGraph:
                     raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
                 if node.slice.value < 0 or node.slice.value >= array_var.ndim:
                     raise TaichiCompilationError(f"The index of shape is out of range")
-                shape_argument = IntArgValue(
-                    arg_type=IntArgValue.Type.SHAPE_VAR,
-                    shape_var_array=array_var,
-                    shape_var_dim=node.slice.value
-                )
-                self.shape_arguments.append(shape_argument)
-                return shape_argument
+                if id(array_var) in self.graph_argument_ids:
+                    shape_argument = IntArgValue(
+                        arg_type=IntArgValue.Type.SHAPE_VAR,
+                        shape_var_array=array_var,
+                        shape_var_dim=node.slice.value
+                    )
+                    self.shape_arguments.append(shape_argument)
+                    return shape_argument
+                else:
+                    return array_var.shape[node.slice.value]
             else:
                 raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
         elif isinstance(node, ast.BinOp):
