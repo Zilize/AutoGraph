@@ -162,8 +162,30 @@ class AutoGraph:
                                              f"assignments or kernel launches (without return value): "
                                              f"\"{ast.unparse(cast(ast.AST, statement))}\"")
 
+    @staticmethod
+    def _check_kernel_arguments(parameters, kernel_arguments):
+        for parameter, kernel_argument in zip(parameters, kernel_arguments):
+            if not kernel_argument.check_match_parameter(parameter):
+                return False
+        return True
+
     def parse_kernel_launch(self, node):
-        pass
+        kernel_fn = self.global_kernels[node.func.id]
+        parameters = kernel_fn._primal.arguments
+        kernel_arguments = []
+        for arg in node.args:
+            if isinstance(arg, ast.Name):
+                if arg.id not in self.variables:
+                    raise TaichiCompilationError(f"Undefined variable {arg.id}")
+                kernel_arguments.append(self.variables[arg.id])
+            elif isinstance(arg, ast.Constant) or isinstance(arg, ast.Subscript) or isinstance(arg, ast.BinOp):
+                kernel_arguments.append(self._construct_expression(arg))
+            else:
+                raise TaichiCompilationError(f"Invalid argument in kernel {kernel_fn.__name__}")
+        if not self._check_kernel_arguments(parameters, kernel_arguments):
+            raise TaichiCompilationError(f"Argument type error in kernel {kernel_fn.__name__}")
+
+        raise NotImplementedError
 
     def _visit_attribute(self, node):
         if isinstance(node, ast.Name):

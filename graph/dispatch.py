@@ -7,8 +7,10 @@ class Dispatch:
 
 
 class Launch(Dispatch):
-    def __init__(self):
+    def __init__(self, kernel_fn, args):
         super().__init__()
+        self.kernel_fn = kernel_fn
+        self.args = args
 
 
 class Allocation(Dispatch):

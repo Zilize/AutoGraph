@@ -2,14 +2,44 @@ from enum import Enum
 from graph.dispatch import Launch, Allocation
 
 import taichi as ti
+import numpy as np
 from taichi.graph import ArgKind
-from taichi.types import primitive_types
+from taichi.types import primitive_types, int32
+from taichi.types.ndarray_type import NdarrayType
+from taichi.lang.matrix import MatrixType
 from taichi.lang.exception import TaichiRuntimeTypeError, TaichiCompilationError
 
 
 class ArgValue:
     def __init__(self):
-        pass
+        self.annotation = None
+
+    def set_annotation(self, annotation):
+        self.annotation = annotation
+
+    def check_match_parameter(self, parameter):
+        param_annotation = parameter.annotation
+        if self.annotation == int32 and id(param_annotation) in [id(int), id(int32)]:
+            return True
+        elif isinstance(self.annotation, MatrixType) and isinstance(param_annotation, MatrixType):
+            if self.annotation.n == param_annotation.n and self.annotation.m == param_annotation.m and \
+                    self.annotation.dtype == param_annotation.dtype:
+                return True
+            return False
+        elif isinstance(self.annotation, NdarrayType) and isinstance(param_annotation, NdarrayType):
+            if self.annotation.ndim != param_annotation.ndim:
+                return False
+            if isinstance(self.annotation.dtype, MatrixType) and isinstance(param_annotation.dtype, MatrixType):
+                if self.annotation.dtype.n == param_annotation.dtype.n and \
+                        self.annotation.dtype.m == param_annotation.dtype.m and \
+                        self.annotation.dtype.dtype == param_annotation.dtype.dtype:
+                    return True
+                return False
+            # Comparison for Taichi primitive types
+            elif self.annotation.dtype == param_annotation.dtype:
+                return True
+            else:
+                return False
 
 
 class IntArgValue(ArgValue):
@@ -65,6 +95,7 @@ class IntArgValue(ArgValue):
             self.binop_var_op = binop_var_op
             self.binop_var_right = binop_var_right
             assert isinstance(self.binop_var_op, IntArgValue.Op)
+        self.set_annotation(int32)
 
     def __repr__(self):
         return self.__str__()
@@ -166,7 +197,10 @@ class MatrixArgValue(ArgValue):
             assert isinstance(self.const_value, ti.Matrix)
             self.n = self.const_value.n
             self.m = self.const_value.m
-            self.dtype = None
+            if self.const_value.entries.dtype in [np.float32, np.float64]:
+                self.dtype = ti.f32
+            elif self.const_value.entries.dtype in [np.int32, np.int64]:
+                self.dtype = ti.i32
         elif arg_type == MatrixArgValue.Type.GRAPH_VAR:
             if graph_var_name is None or graph_var_n is None or graph_var_m is None or graph_var_dtype is None:
                 raise TaichiCompilationError(f"Argument graph_var_name, graph_var_n, graph_var_m, graph_var_dtype "
@@ -195,11 +229,14 @@ class MatrixArgValue(ArgValue):
             if self.binop_var_op == MatrixArgValue.Op.MATMUL:
                 self.n = self.binop_var_left.n
                 self.m = self.binop_var_right.m
-                self.dtype = None
             else:
                 self.n = self.binop_var_left.n
                 self.m = self.binop_var_left.m
-                self.dtype = None
+            if self.binop_var_left.dtype != self.binop_var_right.dtype:
+                raise TaichiCompilationError(f"Different primitive types in matrix binary operation: "
+                                             f"{self.binop_var_left.dtype} and {self.binop_var_right.dtype}")
+            self.dtype = self.binop_var_left.dtype
+        self.set_annotation(MatrixType(n=self.n, m=self.m, ndim=2, dtype=self.dtype))
 
     def __repr__(self):
         return f"MatrixArgValue with Type({self.arg_type.name}), n({self.n}), m({self.m})"
@@ -284,8 +321,7 @@ class ArrayArgValue(ArgValue):
                  graph_var_name=None,
                  graph_var_ndim=None,
                  graph_var_dtype=None,
-                 alloc_var=None,
-                 alias_var=None):
+                 alloc_var=None):
         super().__init__()
         self.arg_type = arg_type
         assert isinstance(self.arg_type, ArrayArgValue.Type)
@@ -305,12 +341,17 @@ class ArrayArgValue(ArgValue):
             self.shape = self.alloc_var.shape
             self.ndim = self.alloc_var.ndim
             self.dtype = self.alloc_var.dtype
+        self.set_annotation(NdarrayType(dtype=self.dtype, ndim=self.ndim))
 
     def __repr__(self):
         return f"ArrayArgValue with Type({self.arg_type.name}), Id({id(self)})"
 
 
 if __name__ == '__main__':
+    u = ti.types.matrix(n=1, m=2, dtype=ti.f32)
+    v = ti.types.matrix(n=2, m=1, dtype=ti.f32)
+    w = ti.types.vector(n=3, dtype=ti.f32)
+
     a = IntArgValue(IntArgValue.Type.CONST, const_value=1)
     b = IntArgValue(IntArgValue.Type.CONST, const_value=2)
     x = IntArgValue(IntArgValue.Type.GRAPH_VAR, graph_var_name="x")
