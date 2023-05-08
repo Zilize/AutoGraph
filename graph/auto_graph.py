@@ -421,4 +421,6 @@ class AutoGraph:
             if graph_argument_name not in args:
                 raise TaichiCompilationError(f"Graph argument {graph_argument_name} not found in given arguments")
             graph_argument = self.graph_arguments[graph_argument_name]
-            raise NotImplementedError
+            if not graph_argument.check_match_instance(args[graph_argument_name]):
+                raise TaichiCompilationError(f"Argument type {type(args[graph_argument_name])} does not match the "
+                                             f"type of graph argument {graph_argument_name}")

@@ -8,6 +8,8 @@ from taichi.types import primitive_types, int32
 from taichi.types.ndarray_type import NdarrayType
 from taichi.lang.matrix import MatrixType
 from taichi.lang.exception import TaichiRuntimeTypeError, TaichiCompilationError
+from taichi.lang._ndarray import Ndarray
+from taichi import ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
 
 
 class ArgValue:
@@ -44,7 +46,26 @@ class ArgValue:
     def check_match_instance(self, instance):
         if self.annotation == int32 and (isinstance(instance, int) or isinstance(instance, int32)):
             return True
-        # elif
+        elif isinstance(self.annotation, MatrixType):
+            if not isinstance(instance, Matrix) or isinstance(instance, Vector):
+                return False
+            if self.annotation.n != instance.n or self.annotation.m != instance.m:
+                return False
+            return True
+        elif isinstance(self.annotation, NdarrayType):
+            if not isinstance(instance, Ndarray) or isinstance(instance, VectorNdarray):
+                return False
+            if isinstance(self.annotation.dtype, MatrixType):
+                if not isinstance(instance, MatrixNdarray):
+                    return False
+                if self.annotation.dtype.n == instance.n and self.annotation.dtype.m == instance.m:
+                    return True
+                else:
+                    return False
+            else:
+                if not isinstance(instance, ScalarNdarray):
+                    return False
+                return True
 
 
 class IntArgValue(ArgValue):
