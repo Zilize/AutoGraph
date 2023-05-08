@@ -14,7 +14,8 @@ from taichi.lang.exception import (
     TaichiCompilationError
 )
 from taichi.lang.matrix import VectorType, MatrixType
-from taichi.types import int32, float32, ndarray_type, primitive_types
+from taichi.types import int32, primitive_types
+from taichi.types.ndarray_type import NdarrayType
 
 from graph.arg_value import IntArgValue, MatrixArgValue, ArrayArgValue
 from graph.dispatch import Launch, Allocation
@@ -56,6 +57,7 @@ def auto_graph(fn):
 
     decorated._is_taichi_graph = True
     decorated._graph = graph
+    decorated.run = graph.run
     return decorated
 
 
@@ -99,13 +101,17 @@ class AutoGraph:
                 raise TaichiCompilationError(f"Taichi auto-graph `{self.func.__name__}` parameter `{arg_name}` must be "
                                              f"type annotated")
             else:
-                if isinstance(annotation, ndarray_type.NdarrayType):
+                if isinstance(annotation, NdarrayType):
+                    if isinstance(annotation.dtype, VectorType):
+                        raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
                     self.graph_arguments[arg_name] = ArrayArgValue(
                         arg_type=ArrayArgValue.Type.GRAPH_VAR,
                         graph_var_name=arg_name,
                         graph_var_ndim=annotation.ndim,
                         graph_var_dtype=annotation.dtype
                     )
+                elif isinstance(annotation, VectorType):
+                    raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
                 elif isinstance(annotation, MatrixType):
                     self.graph_arguments[arg_name] = MatrixArgValue(
                         arg_type=MatrixArgValue.Type.GRAPH_VAR,
@@ -172,6 +178,11 @@ class AutoGraph:
     def parse_kernel_launch(self, node):
         kernel_fn = self.global_kernels[node.func.id]
         parameters = kernel_fn._primal.arguments
+        for parameter in parameters:
+            if isinstance(parameter.annotation, VectorType):
+                raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
+            if isinstance(parameter.annotation, NdarrayType) and isinstance(parameter.annotation.dtype, VectorType):
+                raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
         kernel_arguments = []
         for arg in node.args:
             if isinstance(arg, ast.Name):
@@ -305,13 +316,7 @@ class AutoGraph:
             self.allocated_arrays.append(array)
             self.variables[node.targets[0].id] = array
         elif func == VectorNdarray:
-            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
-            array = ArrayArgValue(
-                arg_type=ArrayArgValue.Type.ALLOC_VAR,
-                alloc_var=self._cook_allocation_vector_ndarray(*args, **kwargs)
-            )
-            self.allocated_arrays.append(array)
-            self.variables[node.targets[0].id] = array
+            raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
         elif func == MatrixNdarray:
             args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
             array = ArrayArgValue(
@@ -320,7 +325,9 @@ class AutoGraph:
             )
             self.allocated_arrays.append(array)
             self.variables[node.targets[0].id] = array
-        elif func == Vector or func == Matrix or isinstance(func, VectorType) or isinstance(func, MatrixType):
+        elif func == Vector or isinstance(func, VectorType):
+            raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
+        elif func == Matrix or isinstance(func, MatrixType):
             if len(node.value.args) != 1:
                 raise TaichiCompilationError(f"Unsupported argument number for {func}")
             try:
@@ -405,3 +412,13 @@ class AutoGraph:
 
     def parse_expression_assignment(self, node):
         self.variables[node.targets[0].id] = self._construct_expression(node.value)
+
+    def run(self, args):
+        if len(args) != len(self.graph_arguments):
+            raise TaichiCompilationError(f"Auto-graph takes {len(self.graph_arguments)} arguments but {len(args)} "
+                                         f"were given")
+        for graph_argument_name in self.graph_arguments:
+            if graph_argument_name not in args:
+                raise TaichiCompilationError(f"Graph argument {graph_argument_name} not found in given arguments")
+            graph_argument = self.graph_arguments[graph_argument_name]
+            raise NotImplementedError

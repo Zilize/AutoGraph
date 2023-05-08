@@ -41,6 +41,11 @@ class ArgValue:
             else:
                 return False
 
+    def check_match_instance(self, instance):
+        if self.annotation == int32 and (isinstance(instance, int) or isinstance(instance, int32)):
+            return True
+        # elif
+
 
 class IntArgValue(ArgValue):
     class Type(Enum):
@@ -194,7 +199,7 @@ class MatrixArgValue(ArgValue):
             if const_value is None:
                 raise TaichiCompilationError(f"Argument const_value should not be None with Type.CONST")
             self.const_value = const_value
-            assert isinstance(self.const_value, ti.Matrix)
+            assert isinstance(self.const_value, ti.Matrix) and self.const_value.ndim == 2
             self.n = self.const_value.n
             self.m = self.const_value.m
             if self.const_value.entries.dtype in [np.float32, np.float64]:
