@@ -17,7 +17,7 @@ from taichi.lang.matrix import VectorType, MatrixType
 from taichi.types import int32, primitive_types
 from taichi.types.ndarray_type import NdarrayType
 
-from graph.arg_value import IntArgValue, MatrixArgValue, ArrayArgValue
+from graph.arg_value import ArgValue, IntArgValue, MatrixArgValue, ArrayArgValue
 from graph.dispatch import Launch, Allocation
 
 
@@ -414,6 +414,7 @@ class AutoGraph:
         self.variables[node.targets[0].id] = self._construct_expression(node.value)
 
     def run(self, args):
+        ArgValue.reset_buffer()
         if len(args) != len(self.graph_arguments):
             raise TaichiCompilationError(f"Auto-graph takes {len(self.graph_arguments)} arguments but {len(args)} "
                                          f"were given")
@@ -424,3 +425,9 @@ class AutoGraph:
             if not graph_argument.check_match_instance(args[graph_argument_name]):
                 raise TaichiCompilationError(f"Argument type {type(args[graph_argument_name])} does not match the "
                                              f"type of graph argument {graph_argument_name}")
+
+            # Following step for JIT running
+            # 1. set_value for all graph arguments
+            # 2. set_value for all shape arguments
+            # 3. create ndarray for all allocated arrays
+            # 4. prepare kernel arguments, ensure kernel compilation and launch kernel one by one

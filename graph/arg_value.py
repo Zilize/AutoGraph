@@ -13,11 +13,29 @@ from taichi import ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
 
 
 class ArgValue:
+    arg_value_buffer = []
+
+    @staticmethod
+    def reset_buffer():
+        for arg_value in ArgValue.arg_value_buffer:
+            arg_value.reset_value()
+
     def __init__(self):
         self.annotation = None
+        self.value = None
 
     def set_annotation(self, annotation):
         self.annotation = annotation
+
+    def set_value(self, value):
+        ArgValue.arg_value_buffer.append(self)
+        self.value = value
+
+    def get_value(self):
+        raise NotImplementedError
+
+    def reset_value(self):
+        self.value = None
 
     def check_match_parameter(self, parameter):
         param_annotation = parameter.annotation
@@ -37,7 +55,6 @@ class ArgValue:
                         self.annotation.dtype.dtype == param_annotation.dtype.dtype:
                     return True
                 return False
-            # Comparison for Taichi primitive types
             elif self.annotation.dtype == param_annotation.dtype:
                 return True
             else:
@@ -122,6 +139,27 @@ class IntArgValue(ArgValue):
             self.binop_var_right = binop_var_right
             assert isinstance(self.binop_var_op, IntArgValue.Op)
         self.set_annotation(int32)
+
+    def get_value(self):
+        ArgValue.arg_value_buffer.append(self)
+        if self.arg_type == IntArgValue.Type.CONST:
+            self.value = self.const_value
+        elif self.arg_type == IntArgValue.Type.BINOP_VAR:
+            if self.value is None:
+                left_value = self.binop_var_left.get_value()
+                right_value = self.binop_var_right.get_value()
+                if self.binop_var_op == IntArgValue.Op.ADD:
+                    self.value = left_value + right_value
+                elif self.binop_var_op == IntArgValue.Op.SUB:
+                    self.value = left_value - right_value
+                elif self.binop_var_op == IntArgValue.Op.MUL:
+                    self.value = left_value * right_value
+                elif self.binop_var_op == IntArgValue.Op.DIV:
+                    self.value = left_value / right_value
+                elif self.binop_var_op == IntArgValue.Op.MOD:
+                    self.value = left_value % right_value
+        assert self.value is not None
+        return self.value
 
     def __repr__(self):
         return self.__str__()
@@ -264,6 +302,29 @@ class MatrixArgValue(ArgValue):
             self.dtype = self.binop_var_left.dtype
         self.set_annotation(MatrixType(n=self.n, m=self.m, ndim=2, dtype=self.dtype))
 
+    def get_value(self):
+        ArgValue.arg_value_buffer.append(self)
+        if self.arg_type == MatrixArgValue.Type.CONST:
+            self.value = self.const_value
+        elif self.arg_type == MatrixArgValue.Type.BINOP_VAR:
+            if self.value is None:
+                left_value = self.binop_var_left.get_value()
+                right_value = self.binop_var_right.get_value()
+                if self.binop_var_op == MatrixArgValue.Op.ADD:
+                    self.value = left_value + right_value
+                elif self.binop_var_op == MatrixArgValue.Op.SUB:
+                    self.value = left_value - right_value
+                elif self.binop_var_op == MatrixArgValue.Op.MUL:
+                    self.value = left_value * right_value
+                elif self.binop_var_op == MatrixArgValue.Op.DIV:
+                    self.value = left_value / right_value
+                elif self.binop_var_op == MatrixArgValue.Op.MOD:
+                    self.value = left_value % right_value
+                elif self.binop_var_op == MatrixArgValue.Op.MATMUL:
+                    self.value = left_value @ right_value
+        assert self.value is not None
+        return self.value
+
     def __repr__(self):
         return f"MatrixArgValue with Type({self.arg_type.name}), n({self.n}), m({self.m})"
 
@@ -368,6 +429,10 @@ class ArrayArgValue(ArgValue):
             self.ndim = self.alloc_var.ndim
             self.dtype = self.alloc_var.dtype
         self.set_annotation(NdarrayType(dtype=self.dtype, ndim=self.ndim))
+
+    def get_value(self):
+        assert self.value is not None
+        return self.value
 
     def __repr__(self):
         return f"ArrayArgValue with Type({self.arg_type.name}), Id({id(self)})"
