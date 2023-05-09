@@ -8,6 +8,7 @@ import taichi.types
 from taichi import ndarray, ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.exception import (
+    TaichiRuntimeError,
     TaichiCompilationError
 )
 from taichi.lang.matrix import VectorType, MatrixType
@@ -62,6 +63,7 @@ def auto_graph(fn):
 
     decorated._is_taichi_graph = True
     decorated._graph = graph
+    decorated.compile = graph.compile
     decorated.run = graph.run
     return decorated
 
@@ -72,13 +74,11 @@ class AutoGraph:
         self.graph_arguments = {}
         self.graph_argument_ids = []
         self.variables = {}
-        self.extract_arguments()
         self.global_kernels = {}
-        self.extract_kernels()
         self.launches = []
         self.allocated_arrays = []
         self.shape_arguments = []
-        self.parse_function_body()
+        self.compiled_graph = None
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -420,7 +420,36 @@ class AutoGraph:
     def parse_expression_assignment(self, node):
         self.variables[node.targets[0].id] = self._construct_expression(node.value)
 
+    def build_compiled_graph(self):
+        graph_builder = GraphBuilder()
+        for launch_index, launch in enumerate(self.launches):
+            sym_args = []
+            for launch_arg_index, launch_arg in enumerate(launch.args):
+                sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
+                if isinstance(launch_arg, IntArgValue):
+                    int_type = launch.kernel_fn._primal.arguments[launch_arg_index].annotation
+                    sym_arg = Arg(ArgKind.SCALAR, sym_name, int_type)
+                elif isinstance(launch_arg, MatrixArgValue):
+                    sym_arg = Arg(ArgKind.MATRIX, sym_name, MatrixType(n=launch_arg.n, m=launch_arg.m, ndim=2,
+                                                                       dtype=launch_arg.dtype))
+                elif isinstance(launch_arg, ArrayArgValue):
+                    sym_arg = Arg(ArgKind.NDARRAY, sym_name, launch_arg.dtype, launch_arg.ndim)
+                else:
+                    raise TaichiCompilationError(f"Invalid type for launch arguments")
+                sym_args.append(sym_arg)
+            graph_builder.dispatch(launch.kernel_fn, *sym_args)
+        self.compiled_graph = graph_builder.compile()
+
+    def compile(self):
+        self.extract_arguments()
+        self.extract_kernels()
+        self.parse_function_body()
+        self.build_compiled_graph()
+
     def run(self, args):
+        if self.compiled_graph is None:
+            raise TaichiRuntimeError(f"Please compile the auto-graph first")
+
         ArgValue.reset_buffer()
         if len(args) != len(self.graph_arguments):
             raise TaichiCompilationError(f"Auto-graph takes {len(self.graph_arguments)} arguments but {len(args)} "
@@ -443,24 +472,9 @@ class AutoGraph:
             shape = tuple(shape)
             allocated_array.set_value(taichi.ndarray(dtype=allocated_array.dtype, shape=shape))
 
-        graph_builder = GraphBuilder()
         compiled_graph_args = {}
         for launch_index, launch in enumerate(self.launches):
-            sym_args = []
             for launch_arg_index, launch_arg in enumerate(launch.args):
                 sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
-                if isinstance(launch_arg, IntArgValue):
-                    int_type = launch.kernel_fn._primal.arguments[launch_arg_index].annotation
-                    sym_arg = Arg(ArgKind.SCALAR, sym_name, int_type)
-                elif isinstance(launch_arg, MatrixArgValue):
-                    sym_arg = Arg(ArgKind.MATRIX, sym_name, MatrixType(n=launch_arg.n, m=launch_arg.m, ndim=2,
-                                                                       dtype=launch_arg.dtype))
-                elif isinstance(launch_arg, ArrayArgValue):
-                    sym_arg = Arg(ArgKind.NDARRAY, sym_name, launch_arg.dtype, launch_arg.ndim)
-                else:
-                    raise TaichiCompilationError(f"Invalid type for launch arguments")
                 compiled_graph_args[sym_name] = launch_arg.get_value()
-                sym_args.append(sym_arg)
-            graph_builder.dispatch(launch.kernel_fn, *sym_args)
-        compiled_graph = graph_builder.compile()
-        compiled_graph.run(compiled_graph_args)
+        self.compiled_graph.run(compiled_graph_args)

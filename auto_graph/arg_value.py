@@ -18,6 +18,7 @@ class ArgValue:
     def reset_buffer():
         for arg_value in ArgValue.arg_value_buffer:
             arg_value.reset_value()
+        ArgValue.arg_value_buffer.clear()
 
     def __init__(self):
         self.annotation = None

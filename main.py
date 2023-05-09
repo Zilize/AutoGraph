@@ -110,6 +110,7 @@ def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
 if __name__ == '__main__':
     ti.init(arch=ti.cpu, default_ip=ti.i64)
     fool_arr = ti.ndarray(dtype=ti.f32, shape=4)
+    fool_graph.compile()
     fool_graph.run({'arr': fool_arr})
     print(fool_arr.to_numpy())
 
