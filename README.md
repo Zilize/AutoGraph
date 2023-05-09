@@ -1,6 +1,6 @@
 # AutoGraph
 
-AutoGraph is a component for automatically compiling and launches Taichi compute graph. This repository provides a prototype implementation for AutoGraph. The roadmap for the entire project is as follows:
+AutoGraph is a component for automatically compiling and launching Taichi compute graph. This repository provides a prototype implementation for AutoGraph. The roadmap for the entire project is as follows:
 
 - [x] AutoGraph parsing, just-in-time execution in Python environment
 - [ ] Export meta-data of the AutoGraph, collaborating with existing compute graph components in Taichi 
