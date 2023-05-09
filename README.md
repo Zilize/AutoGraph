@@ -16,9 +16,19 @@ You can add the Python decorator `@auto_graph` to the Python function correspond
 You can try out the just-in-time execution in Python environment through the example in `example.py`:
 
 ```python
-
 import taichi as ti
 from auto_graph import auto_graph
+
+
+@auto_graph
+def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+    x = 2
+    y = 3
+    dt = x + y
+    dt_arr = ti.ndarray(dtype=ti.f32, shape=arr.shape[0])
+    kernel_delta(dt, dt_arr)
+    kernel_update(arr, dt_arr)
+    kernel_update(arr, dt_arr)
 
 
 @ti.kernel
@@ -34,21 +44,10 @@ def kernel_update(arr: ti.types.ndarray(dtype=ti.f32, ndim=1),
         arr[i] = arr[i] + delta[i]
 
 
-@auto_graph
-def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
-    x = 2
-    y = 3
-    dt = x + y
-    dt_arr = ti.ndarray(dtype=ti.f32, shape=arr.shape[0])
-    kernel_delta(dt, dt_arr)
-    kernel_update(arr, dt_arr)
-    kernel_update(arr, dt_arr)
-
-
 if __name__ == '__main__':
     ti.init(arch=ti.cpu, default_ip=ti.i64)
     fool_arr = ti.ndarray(dtype=ti.f32, shape=4)
+    fool_graph.compile()
     fool_graph.run({'arr': fool_arr})
     print(fool_arr.to_numpy())
-
 ```
