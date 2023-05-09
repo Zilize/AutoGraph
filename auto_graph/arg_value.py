@@ -1,10 +1,9 @@
 from enum import Enum
-from graph.dispatch import Launch, Allocation
+from auto_graph.allocation import Allocation
 
 import taichi as ti
 import numpy as np
-from taichi.graph import ArgKind
-from taichi.types import primitive_types, int32
+from taichi.types import int32
 from taichi.types.ndarray_type import NdarrayType
 from taichi.lang.matrix import MatrixType
 from taichi.lang.exception import TaichiRuntimeTypeError, TaichiCompilationError

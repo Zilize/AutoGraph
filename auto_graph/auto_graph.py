@@ -1,5 +1,4 @@
 import ast
-import sys
 import inspect
 import functools
 from typing import cast
@@ -9,8 +8,6 @@ import taichi.types
 from taichi import ndarray, ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
 from taichi.lang.kernel_impl import Kernel
 from taichi.lang.exception import (
-    TaichiRuntimeError,
-    TaichiRuntimeTypeError,
     TaichiCompilationError
 )
 from taichi.lang.matrix import VectorType, MatrixType
@@ -18,8 +15,15 @@ from taichi.types import int32, primitive_types
 from taichi.types.ndarray_type import NdarrayType
 from taichi.graph import Arg, ArgKind, GraphBuilder
 
-from graph.arg_value import ArgValue, IntArgValue, MatrixArgValue, ArrayArgValue
-from graph.dispatch import Launch, Allocation
+from auto_graph.arg_value import ArgValue, IntArgValue, MatrixArgValue, ArrayArgValue
+from auto_graph.allocation import Allocation
+
+
+class Launch:
+    def __init__(self, kernel_fn, args):
+        super().__init__()
+        self.kernel_fn = kernel_fn
+        self.args = args
 
 
 def auto_graph(fn):
@@ -439,8 +443,6 @@ class AutoGraph:
             shape = tuple(shape)
             allocated_array.set_value(taichi.ndarray(dtype=allocated_array.dtype, shape=shape))
 
-        # Following step for JIT running
-        # prepare kernel arguments, ensure kernel compilation and launch kernel one by one
         graph_builder = GraphBuilder()
         compiled_graph_args = {}
         for launch_index, launch in enumerate(self.launches):

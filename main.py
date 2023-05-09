@@ -1,5 +1,5 @@
 import taichi as ti
-from graph import auto_graph
+from auto_graph import auto_graph
 
 
 def demo():
@@ -14,30 +14,6 @@ def demo():
 @ti.kernel
 def kernel_primitive(x: ti.f32, y: ti.f16, z: int):
     a = x + y + z
-
-
-@ti.kernel
-def kernel_delta(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
-    for i in ti.grouped(arr):
-        arr[i] = arr[i] + delta
-
-
-@ti.kernel
-def kernel_update(arr: ti.types.ndarray(dtype=ti.f32, ndim=1),
-                  delta: ti.types.ndarray(dtype=ti.f32, ndim=1)):
-    for i in ti.grouped(arr):
-        arr[i] = arr[i] + delta[i]
-
-
-@auto_graph
-def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
-    x = 2
-    y = 3
-    dt = x + y
-    dt_arr = ti.ndarray(dtype=ti.f32, shape=arr.shape[0])
-    kernel_delta(dt, dt_arr)
-    kernel_update(arr, dt_arr)
-    kernel_update(arr, dt_arr)
 
 
 # @auto_graph
@@ -105,6 +81,30 @@ def run_types(
 #     delta = ti.ndarray(dtype=ti.f32, shape=i)
 #     kernel_delta(delta)
 #     kernel_update(x, delta)
+
+
+@ti.kernel
+def kernel_delta(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta
+
+
+@ti.kernel
+def kernel_update(arr: ti.types.ndarray(dtype=ti.f32, ndim=1),
+                  delta: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta[i]
+
+
+@auto_graph
+def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+    x = 2
+    y = 3
+    dt = x + y
+    dt_arr = ti.ndarray(dtype=ti.f32, shape=arr.shape[0])
+    kernel_delta(dt, dt_arr)
+    kernel_update(arr, dt_arr)
+    kernel_update(arr, dt_arr)
 
 
 if __name__ == '__main__':
