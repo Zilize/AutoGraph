@@ -16,6 +16,7 @@ from taichi.lang.exception import (
 from taichi.lang.matrix import VectorType, MatrixType
 from taichi.types import int32, primitive_types
 from taichi.types.ndarray_type import NdarrayType
+from taichi.graph import Arg, ArgKind, GraphBuilder
 
 from graph.arg_value import ArgValue, IntArgValue, MatrixArgValue, ArrayArgValue
 from graph.dispatch import Launch, Allocation
@@ -179,6 +180,8 @@ class AutoGraph:
         kernel_fn = self.global_kernels[node.func.id]
         parameters = kernel_fn._primal.arguments
         for parameter in parameters:
+            if id(parameter.annotation) in [id(int), id(float)]:
+                raise TaichiCompilationError(f"Builtin primitive types are not supported in auto-graph")
             if isinstance(parameter.annotation, VectorType):
                 raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
             if isinstance(parameter.annotation, NdarrayType) and isinstance(parameter.annotation.dtype, VectorType):
@@ -425,9 +428,37 @@ class AutoGraph:
             if not graph_argument.check_match_instance(args[graph_argument_name]):
                 raise TaichiCompilationError(f"Argument type {type(args[graph_argument_name])} does not match the "
                                              f"type of graph argument {graph_argument_name}")
+            graph_argument.set_value(args[graph_argument_name])
+        for shape_argument in self.shape_arguments:
+            graph_array = shape_argument.shape_var_array.value
+            shape_argument.set_value(graph_array.shape[shape_argument.shape_var_dim])
+        for allocated_array in self.allocated_arrays:
+            shape = []
+            for shape_item in allocated_array.shape:
+                shape.append(shape_item.get_value())
+            shape = tuple(shape)
+            allocated_array.set_value(taichi.ndarray(dtype=allocated_array.dtype, shape=shape))
 
-            # Following step for JIT running
-            # 1. set_value for all graph arguments
-            # 2. set_value for all shape arguments
-            # 3. create ndarray for all allocated arrays
-            # 4. prepare kernel arguments, ensure kernel compilation and launch kernel one by one
+        # Following step for JIT running
+        # prepare kernel arguments, ensure kernel compilation and launch kernel one by one
+        graph_builder = GraphBuilder()
+        compiled_graph_args = {}
+        for launch_index, launch in enumerate(self.launches):
+            sym_args = []
+            for launch_arg_index, launch_arg in enumerate(launch.args):
+                sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
+                if isinstance(launch_arg, IntArgValue):
+                    int_type = launch.kernel_fn._primal.arguments[launch_arg_index].annotation
+                    sym_arg = Arg(ArgKind.SCALAR, sym_name, int_type)
+                elif isinstance(launch_arg, MatrixArgValue):
+                    sym_arg = Arg(ArgKind.MATRIX, sym_name, MatrixType(n=launch_arg.n, m=launch_arg.m, ndim=2,
+                                                                       dtype=launch_arg.dtype))
+                elif isinstance(launch_arg, ArrayArgValue):
+                    sym_arg = Arg(ArgKind.NDARRAY, sym_name, launch_arg.dtype, launch_arg.ndim)
+                else:
+                    raise TaichiCompilationError(f"Invalid type for launch arguments")
+                compiled_graph_args[sym_name] = launch_arg.get_value()
+                sym_args.append(sym_arg)
+            graph_builder.dispatch(launch.kernel_fn, *sym_args)
+        compiled_graph = graph_builder.compile()
+        compiled_graph.run(compiled_graph_args)

@@ -17,9 +17,9 @@ def kernel_primitive(x: ti.f32, y: ti.f16, z: int):
 
 
 @ti.kernel
-def kernel_delta(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+def kernel_delta(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
     for i in ti.grouped(arr):
-        arr[i] = arr[i] + 1.0
+        arr[i] = arr[i] + delta
 
 
 @ti.kernel
@@ -27,6 +27,17 @@ def kernel_update(arr: ti.types.ndarray(dtype=ti.f32, ndim=1),
                   delta: ti.types.ndarray(dtype=ti.f32, ndim=1)):
     for i in ti.grouped(arr):
         arr[i] = arr[i] + delta[i]
+
+
+@auto_graph
+def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
+    x = 2
+    y = 3
+    dt = x + y
+    dt_arr = ti.ndarray(dtype=ti.f32, shape=arr.shape[0])
+    kernel_delta(dt, dt_arr)
+    kernel_update(arr, dt_arr)
+    kernel_update(arr, dt_arr)
 
 
 # @auto_graph
@@ -59,7 +70,7 @@ def run_sim(i: int, j: ti.i32, x: ti.types.ndarray(dtype=ti.f32, ndim=2)):
 
 @ti.kernel
 def kernel_types(
-        a: int,
+        a: ti.i32,
         b: ti.i32,
         d: ti.types.matrix(n=2, m=3, dtype=ti.i32),
         e: ti.types.ndarray(dtype=ti.f32, ndim=2),
@@ -80,34 +91,32 @@ def run_types(
     a1 = 1
     b1 = 2
     c1 = ti.types.matrix(n=2, m=3, dtype=ti.i32)([[1, 2, 3], [4, 5, 6]])
-    d1 = ti.ScalarNdarray(dtype=ti.f32, arr_shape=(3, 4))
-    e1 = ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(a1, b1, 7, 8))
+    d1 = ti.ScalarNdarray(dtype=ti.f32, arr_shape=(a1, 4))
+    e1 = ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(e0.shape[0], e0.shape[1], e0.shape[2], e0.shape[3]))
     kernel_types(a1, b1, c1, d1, e1)
 
 
-@auto_graph
-def run_demo(
-        i: int,
-        x: ti.types.ndarray(dtype=ti.f32, ndim=1),
-        m: ti.types.matrix(n=3, m=3, dtype=ti.f32)
-):
-    delta = ti.ndarray(dtype=ti.f32, shape=i)
-    kernel_delta(delta)
-    kernel_update(x, delta)
-
-
-def te(a, b, c, d):
-    print(a, b, c, d)
+# @auto_graph
+# def run_demo(
+#         i: int,
+#         x: ti.types.ndarray(dtype=ti.f32, ndim=1),
+#         m: ti.types.matrix(n=3, m=3, dtype=ti.f32)
+# ):
+#     delta = ti.ndarray(dtype=ti.f32, shape=i)
+#     kernel_delta(delta)
+#     kernel_update(x, delta)
 
 
 if __name__ == '__main__':
     ti.init(arch=ti.cpu, default_ip=ti.i64)
-    run_types.run({
-        'a0': 1,
-        'b0': 2,
-        # 'c0': ti.types.vector(n=3, dtype=ti.f32)([1.0, 2.0, 3.0]),
-        'c0': ti.types.matrix(n=2, m=3, dtype=ti.i32)([[1, 2, 3], [4, 5, 6]]),
-        'd0': ti.ScalarNdarray(dtype=ti.f32, arr_shape=(3, 4)),
-        # 'e0': ti.VectorNdarray(n=3, dtype=ti.f32, shape=(6, 7, 8)),
-        'e0': ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(2, 2, 2, 2))
-    })
+    fool_arr = ti.ndarray(dtype=ti.f32, shape=4)
+    fool_graph.run({'arr': fool_arr})
+    print(fool_arr.to_numpy())
+
+    # run_types.run({
+    #     'a0': 1,
+    #     'b0': 2,
+    #     'c0': ti.types.matrix(n=2, m=3, dtype=ti.i32)([[1, 2, 3], [4, 5, 6]]),
+    #     'd0': ti.ScalarNdarray(dtype=ti.f32, arr_shape=(3, 4)),
+    #     'e0': ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(11, 22, 33, 44))
+    # })
