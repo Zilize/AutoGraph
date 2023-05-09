@@ -13,7 +13,7 @@ You can add the Python decorator `@auto_graph` to the Python function correspond
 - Allocating various types of Taichi Ndarray
 - Launching Taichi kernels without return values
 
-You can try out the just-in-time execution in Python environment through the example in `python/example.py`:
+You can try out the just-in-time execution in Python environment through the example in `example.py`:
 
 ```python
 
