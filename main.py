@@ -109,11 +109,13 @@ def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
 
 if __name__ == '__main__':
     ti.init(arch=ti.cpu, default_ip=ti.i64)
-    fool_arr = ti.ndarray(dtype=ti.f32, shape=4)
-    fool_graph.compile()
-    fool_graph.run({'arr': fool_arr})
-    print(fool_arr.to_numpy())
+    # fool_arr = ti.ndarray(dtype=ti.f32, shape=4)
+    # fool_graph.compile()
+    # fool_graph.run({'arr': fool_arr})
+    # print(fool_arr.to_numpy())
+    # fool_graph.archive("auto_graph.tcm")
 
+    run_types.compile()
     # run_types.run({
     #     'a0': 1,
     #     'b0': 2,
@@ -121,3 +123,4 @@ if __name__ == '__main__':
     #     'd0': ti.ScalarNdarray(dtype=ti.f32, arr_shape=(3, 4)),
     #     'e0': ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(11, 22, 33, 44))
     # })
+    run_types.archive("auto_graph.tcm")

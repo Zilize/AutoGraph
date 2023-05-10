@@ -1,7 +1,13 @@
 import ast
+import json
 import inspect
 import functools
 from typing import cast
+from glob import glob
+from shutil import rmtree
+from zipfile import ZipFile
+from tempfile import mkdtemp
+from pathlib import Path, PurePosixPath
 
 import taichi.lang.impl as impl
 import taichi.types
@@ -15,6 +21,7 @@ from taichi.lang.matrix import VectorType, MatrixType
 from taichi.types import int32, primitive_types
 from taichi.types.ndarray_type import NdarrayType
 from taichi.graph import Arg, ArgKind, GraphBuilder
+from taichi.aot import Module
 
 from auto_graph.arg_value import ArgValue, IntArgValue, MatrixArgValue, ArrayArgValue
 from auto_graph.allocation import Allocation
@@ -25,6 +32,37 @@ class Launch:
         super().__init__()
         self.kernel_fn = kernel_fn
         self.args = args
+
+
+def _cook_dtype_string(dtype):
+    if dtype == int:
+        return _cook_dtype_string(impl.get_runtime().default_ip)
+    elif dtype == taichi.i8:
+        return "i8"
+    elif dtype == taichi.i16:
+        return "i16"
+    elif dtype == taichi.i32:
+        return "i32"
+    elif dtype == taichi.i64:
+        return "i64"
+    elif dtype == float:
+        return _cook_dtype_string(impl.get_runtime().default_fp)
+    elif dtype == taichi.f16:
+        return "f16"
+    elif dtype == taichi.f32:
+        return "f32"
+    elif dtype == taichi.f64:
+        return "f64"
+    elif dtype == taichi.u8:
+        return "u8"
+    elif dtype == taichi.u16:
+        return "u16"
+    elif dtype == taichi.u32:
+        return "u32"
+    elif dtype == taichi.u64:
+        return "u64"
+    else:
+        raise TaichiRuntimeError(f"Unsupported dtype")
 
 
 def auto_graph(fn):
@@ -65,6 +103,7 @@ def auto_graph(fn):
     decorated._graph = graph
     decorated.compile = graph.compile
     decorated.run = graph.run
+    decorated.archive = graph.archive
     return decorated
 
 
@@ -78,6 +117,7 @@ class AutoGraph:
         self.launches = []
         self.allocated_arrays = []
         self.shape_arguments = []
+        self.graph_builder = None
         self.compiled_graph = None
 
     def __call__(self, *args, **kwargs):
@@ -421,7 +461,7 @@ class AutoGraph:
         self.variables[node.targets[0].id] = self._construct_expression(node.value)
 
     def build_compiled_graph(self):
-        graph_builder = GraphBuilder()
+        self.graph_builder = GraphBuilder()
         for launch_index, launch in enumerate(self.launches):
             sym_args = []
             for launch_arg_index, launch_arg in enumerate(launch.args):
@@ -437,8 +477,8 @@ class AutoGraph:
                 else:
                     raise TaichiCompilationError(f"Invalid type for launch arguments")
                 sym_args.append(sym_arg)
-            graph_builder.dispatch(launch.kernel_fn, *sym_args)
-        self.compiled_graph = graph_builder.compile()
+            self.graph_builder.dispatch(launch.kernel_fn, *sym_args)
+        self.compiled_graph = self.graph_builder.compile()
 
     def compile(self):
         self.extract_arguments()
@@ -478,3 +518,90 @@ class AutoGraph:
                 sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
                 compiled_graph_args[sym_name] = launch_arg.get_value()
         self.compiled_graph.run(compiled_graph_args)
+
+    def dump_meta_data(self):
+        id_to_array_name = {}
+        meta_data = {
+            "graph_arguments": {},
+            "allocated_arrays": {},
+            "launches": {}
+        }
+        for graph_argument_name, graph_argument in self.graph_arguments.items():
+            meta_data["graph_arguments"][graph_argument_name] = {}
+            graph_argument_entry = meta_data["graph_arguments"][graph_argument_name]
+            if isinstance(graph_argument, IntArgValue):
+                graph_argument_entry["type"] = "int"
+                graph_argument_entry["dtype"] = "i32"  # TODO
+            elif isinstance(graph_argument, MatrixArgValue):
+                graph_argument_entry["type"] = "matrix"
+                graph_argument_entry["n"] = graph_argument.n
+                graph_argument_entry["m"] = graph_argument.m
+                graph_argument_entry["dtype"] = _cook_dtype_string(graph_argument.dtype)
+            elif isinstance(graph_argument, ArrayArgValue):
+                id_to_array_name[id(graph_argument)] = graph_argument_name
+                graph_argument_entry["type"] = "array"
+                graph_argument_entry["ndim"] = graph_argument.ndim
+                if id(graph_argument.dtype) in primitive_types.type_ids:
+                    graph_argument_entry["n"] = 0
+                    graph_argument_entry["m"] = 0
+                    graph_argument_entry["dtype"] = _cook_dtype_string(graph_argument.dtype)
+                elif isinstance(graph_argument.dtype, MatrixType):
+                    graph_argument_entry["n"] = graph_argument.dtype.n
+                    graph_argument_entry["m"] = graph_argument.dtype.m
+                    graph_argument_entry["dtype"] = _cook_dtype_string(graph_argument.dtype.dtype)
+                else:
+                    raise TaichiRuntimeError("Unsupported dtype")
+        for allocated_array_index, allocated_array in enumerate(self.allocated_arrays):
+            allocated_array_name = f"array:{allocated_array_index}"
+            meta_data["allocated_arrays"][allocated_array_name] = {}
+            allocated_array_entry = meta_data["allocated_arrays"][allocated_array_name]
+            id_to_array_name[id(allocated_array)] = allocated_array_name
+            if id(allocated_array.dtype) in primitive_types.type_ids:
+                allocated_array_entry["n"] = 0
+                allocated_array_entry["m"] = 0
+                allocated_array_entry["dtype"] = _cook_dtype_string(allocated_array.dtype)
+            elif isinstance(allocated_array.dtype, MatrixType):
+                allocated_array_entry["n"] = allocated_array.dtype.n
+                allocated_array_entry["m"] = allocated_array.dtype.m
+                allocated_array_entry["dtype"] = _cook_dtype_string(allocated_array.dtype.dtype)
+            else:
+                raise TaichiRuntimeError("Unsupported dtype")
+            allocated_array_entry["shape"] = [str(shape_item) for shape_item in allocated_array.shape]
+        for launch_index, launch in enumerate(self.launches):
+            for launch_arg_index, launch_arg in enumerate(launch.args):
+                launch_arg_name = f"kernel_{launch_index}_arg_{launch_arg_index}"
+                meta_data["launches"][launch_arg_name] = {}
+                launch_arg_entry = meta_data["launches"][launch_arg_name]
+                if isinstance(launch_arg, IntArgValue):
+                    launch_arg_entry["type"] = "int"
+                    launch_arg_entry["dtype"] = "i32"  # TODO
+                    launch_arg_entry["value"] = str(launch_arg)
+                elif isinstance(launch_arg, MatrixArgValue):
+                    launch_arg_entry["type"] = "matrix"
+                    launch_arg_entry["dtype"] = _cook_dtype_string(launch_arg.dtype)
+                    launch_arg_entry["value"] = str(launch_arg)
+                elif isinstance(launch_arg, ArrayArgValue):
+                    launch_arg_entry["type"] = "array"
+                    launch_arg_entry["value"] = id_to_array_name[id(launch_arg)]
+        return json.dumps(meta_data, separators=(',', ':'))
+
+    def archive(self, filepath):
+        assert filepath.endswith(".tcm"), "AOT module artifact archive must ends with .tcm"
+        tcm_path = Path(filepath).absolute()
+        assert tcm_path.parent.exists(), "Output directory doesn't exist"
+        temp_dir = mkdtemp(prefix="tcm_")
+
+        # Save AOT module
+        mod = Module()
+        mod.add_graph('auto_graph', self.compiled_graph)
+        mod.save(temp_dir)
+
+        # Save meta-data for auto-graph
+        with open(f"{str(PurePosixPath(Path(temp_dir)))}/auto_graph.json", "w") as f:
+            f.write(self.dump_meta_data())
+
+        # Package to a zip archive and remove the cached files
+        with ZipFile(tcm_path, "w") as z:
+            for path in glob(f"{temp_dir}/*", recursive=True):
+                z.write(path, Path.relative_to(Path(path), temp_dir))
+        rmtree(temp_dir)

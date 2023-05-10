@@ -138,7 +138,7 @@ class IntArgValue(ArgValue):
             self.binop_var_op = binop_var_op
             self.binop_var_right = binop_var_right
             assert isinstance(self.binop_var_op, IntArgValue.Op)
-        self.set_annotation(int32)
+        self.set_annotation(int32)  # TODO
 
     def get_value(self):
         ArgValue.arg_value_buffer.append(self)
@@ -170,7 +170,8 @@ class IntArgValue(ArgValue):
         elif self.arg_type == IntArgValue.Type.GRAPH_VAR:
             return self.graph_var_name
         elif self.arg_type == IntArgValue.Type.SHAPE_VAR:
-            return f"arr({id(self.shape_var_array)}).shape[{self.shape_var_dim}]"
+            return f"{self.shape_var_array.graph_var_name}{{{self.shape_var_dim}}}"
+            # return f"arr({id(self.shape_var_array)}).shape[{self.shape_var_dim}]"
         elif self.arg_type == IntArgValue.Type.BINOP_VAR:
             op = None
             if self.binop_var_op == IntArgValue.Op.ADD:
@@ -326,11 +327,12 @@ class MatrixArgValue(ArgValue):
         return self.value
 
     def __repr__(self):
-        return f"MatrixArgValue with Type({self.arg_type.name}), n({self.n}), m({self.m})"
+        return self.__str__()
+        # return f"MatrixArgValue with Type({self.arg_type.name}), n({self.n}), m({self.m})"
 
     def __str__(self):
         if self.arg_type == MatrixArgValue.Type.CONST:
-            return str(self.const_value.to_list())
+            return str(self.const_value.to_list()).replace(" ", "")
         elif self.arg_type == MatrixArgValue.Type.GRAPH_VAR:
             return self.graph_var_name
         elif self.arg_type == MatrixArgValue.Type.BINOP_VAR:
