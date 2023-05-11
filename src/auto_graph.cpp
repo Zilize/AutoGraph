@@ -1,11 +1,17 @@
 #include <zip.h>
 #include <taichi/cpp/taichi.hpp>
 
-#include <auto_graph.h>
+#include "common.h"
+#include "auto_graph.h"
 
 namespace auto_graph {
 
-std::string load_meta_data(const char *archive_path) {
+AutoGraph::AutoGraph(const char *archive_path) {
+    std::string graph_json_string = load_graph_json(archive_path);
+    auto *graph_json = new GraphContext(graph_json_string.c_str());
+}
+
+std::string AutoGraph::load_graph_json(const char *archive_path) {
     zip *archive = zip_open(archive_path, 0, nullptr);
     if (!archive) {
         char err_msg[256];
@@ -23,6 +29,10 @@ std::string load_meta_data(const char *archive_path) {
     zip_fclose(file);
 
     return buffer;
+}
+
+void AutoGraph::parse_graph_json(const std::string &graph_json) {
+
 }
 
 }  // namespace auto_graph

@@ -3,6 +3,6 @@
 #include <taichi/cpp/taichi.hpp>
 
 int main() {
-    std::cout << auto_graph::load_meta_data("../auto_graph.tcm");
+    auto *graph = new auto_graph::AutoGraph("../auto_graph.tcm");
     return 0;
 }

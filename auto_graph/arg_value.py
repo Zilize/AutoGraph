@@ -171,7 +171,6 @@ class IntArgValue(ArgValue):
             return self.graph_var_name
         elif self.arg_type == IntArgValue.Type.SHAPE_VAR:
             return f"{self.shape_var_array.graph_var_name}{{{self.shape_var_dim}}}"
-            # return f"arr({id(self.shape_var_array)}).shape[{self.shape_var_dim}]"
         elif self.arg_type == IntArgValue.Type.BINOP_VAR:
             op = None
             if self.binop_var_op == IntArgValue.Op.ADD:

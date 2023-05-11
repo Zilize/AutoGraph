@@ -519,7 +519,7 @@ class AutoGraph:
                 compiled_graph_args[sym_name] = launch_arg.get_value()
         self.compiled_graph.run(compiled_graph_args)
 
-    def dump_meta_data(self):
+    def export_graph_json(self):
         id_to_array_name = {}
         meta_data = {
             "graph_arguments": {},
@@ -598,7 +598,7 @@ class AutoGraph:
 
         # Save meta-data for auto-graph
         with open(f"{str(PurePosixPath(Path(temp_dir)))}/auto_graph.json", "w") as f:
-            f.write(self.dump_meta_data())
+            f.write(self.export_graph_json())
 
         # Package to a zip archive and remove the cached files
         with ZipFile(tcm_path, "w") as z:
