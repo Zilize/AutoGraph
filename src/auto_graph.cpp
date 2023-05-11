@@ -1,8 +1,7 @@
-#include <iostream>
-#include <stdexcept>
-
 #include <zip.h>
 #include <taichi/cpp/taichi.hpp>
+
+#include <auto_graph.h>
 
 namespace auto_graph {
 
@@ -27,8 +26,3 @@ std::string load_meta_data(const char *archive_path) {
 }
 
 }  // namespace auto_graph
-
-int main() {
-    std::cout << auto_graph::load_meta_data("../auto_graph.tcm");
-    return 0;
-}
