@@ -10,28 +10,28 @@
 
 namespace auto_graph {
 
-class GraphArgument {
-public:
-    explicit GraphArgument(const ArgumentType &_argument_type, const DataType &_data_type, const int &_n=0,
-                           const int &_m=0, const int &_ndim=0);
+struct GraphArgumentContext {
+    GraphArgumentContext(const ArgumentType &_argument_type, const DataType &_data_type, const int &_n=0,
+                         const int &_m=0, const int &_ndim=0):
+                         argument_type(_argument_type), data_type(_data_type), n(_n), m(_m), ndim(_ndim) {}
 
     ArgumentType argument_type;
     DataType data_type;
     int n, m, ndim;
 };
 
-class AllocatedArray {
-public:
-    explicit AllocatedArray(const DataType &_data_type, std::vector<std::string>* _shape, const int &_n=0, const int &_m=0);
+struct AllocatedArrayContext {
+    AllocatedArrayContext(const DataType &_data_type, std::vector<std::string>* _shape, const int &_n=0,
+                          const int &_m=0): data_type(_data_type), shape(_shape), n(_n), m(_m) {}
 
     DataType data_type;
     std::vector<std::string> *shape;
     int n, m;
 };
 
-class Launch {
-public:
-    explicit Launch(const ArgumentType &_argument_type, const DataType &_data_type, std::string _value);
+struct LaunchContext {
+    LaunchContext(const ArgumentType &_argument_type, const DataType &_data_type, std::string _value):
+                  argument_type(_argument_type), data_type(_data_type), value(std::move(_value)) {}
 
     ArgumentType argument_type;
     DataType data_type;
@@ -42,11 +42,10 @@ class GraphContext {
 public:
     explicit GraphContext(const char *graph_json);
 
-private:
     rapidjson::Document document;
-    std::unordered_map<std::string, GraphArgument*> graph_arguments;
-    std::unordered_map<std::string, AllocatedArray*> allocated_arrays;
-    std::unordered_map<std::string, Launch*> launches;
+    std::unordered_map<std::string, GraphArgumentContext*> graph_argument_contexts;
+    std::unordered_map<std::string, AllocatedArrayContext*> allocated_array_contexts;
+    std::unordered_map<std::string, LaunchContext*> launch_contexts;
 };
 
 }

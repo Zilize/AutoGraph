@@ -114,7 +114,7 @@ class AutoGraph:
         self.graph_argument_ids = []
         self.variables = {}
         self.global_kernels = {}
-        self.launches = []
+        self.launch_contexts = []
         self.allocated_arrays = []
         self.shape_arguments = []
         self.graph_builder = None
@@ -210,7 +210,7 @@ class AutoGraph:
                                                  f"Taichi auto-graph")
             else:
                 raise TaichiCompilationError(f"The statement in Taichi auto-graph {self.func.__name__} must be "
-                                             f"assignments or kernel launches (without return value): "
+                                             f"assignments or kernel launch_contexts (without return value): "
                                              f"\"{ast.unparse(cast(ast.AST, statement))}\"")
 
     @staticmethod
@@ -242,7 +242,7 @@ class AutoGraph:
                 raise TaichiCompilationError(f"Invalid argument in kernel {kernel_fn.__name__}")
         if not self._check_kernel_arguments(parameters, kernel_arguments):
             raise TaichiCompilationError(f"Argument type error in kernel {kernel_fn.__name__}")
-        self.launches.append(Launch(kernel_fn, kernel_arguments))
+        self.launch_contexts.append(Launch(kernel_fn, kernel_arguments))
 
     def _visit_attribute(self, node):
         if isinstance(node, ast.Name):
@@ -462,7 +462,7 @@ class AutoGraph:
 
     def build_compiled_graph(self):
         self.graph_builder = GraphBuilder()
-        for launch_index, launch in enumerate(self.launches):
+        for launch_index, launch in enumerate(self.launch_contexts):
             sym_args = []
             for launch_arg_index, launch_arg in enumerate(launch.args):
                 sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
@@ -513,7 +513,7 @@ class AutoGraph:
             allocated_array.set_value(taichi.ndarray(dtype=allocated_array.dtype, shape=shape))
 
         compiled_graph_args = {}
-        for launch_index, launch in enumerate(self.launches):
+        for launch_index, launch in enumerate(self.launch_contexts):
             for launch_arg_index, launch_arg in enumerate(launch.args):
                 sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
                 compiled_graph_args[sym_name] = launch_arg.get_value()
@@ -524,7 +524,7 @@ class AutoGraph:
         meta_data = {
             "graph_arguments": {},
             "allocated_arrays": {},
-            "launches": {}
+            "launch_contexts": {}
         }
         for graph_argument_name, graph_argument in self.graph_arguments.items():
             meta_data["graph_arguments"][graph_argument_name] = {}
@@ -567,11 +567,11 @@ class AutoGraph:
             else:
                 raise TaichiRuntimeError("Unsupported dtype")
             allocated_array_entry["shape"] = [str(shape_item) for shape_item in allocated_array.shape]
-        for launch_index, launch in enumerate(self.launches):
+        for launch_index, launch in enumerate(self.launch_contexts):
             for launch_arg_index, launch_arg in enumerate(launch.args):
                 launch_arg_name = f"kernel_{launch_index}_arg_{launch_arg_index}"
-                meta_data["launches"][launch_arg_name] = {}
-                launch_arg_entry = meta_data["launches"][launch_arg_name]
+                meta_data["launch_contexts"][launch_arg_name] = {}
+                launch_arg_entry = meta_data["launch_contexts"][launch_arg_name]
                 if isinstance(launch_arg, IntArgValue):
                     launch_arg_entry["type"] = "int"
                     launch_arg_entry["dtype"] = "i32"  # TODO
@@ -585,14 +585,14 @@ class AutoGraph:
                     launch_arg_entry["value"] = id_to_array_name[id(launch_arg)]
         return json.dumps(meta_data, separators=(',', ':'))
 
-    def archive(self, filepath):
+    def archive(self, arch, filepath):
         assert filepath.endswith(".tcm"), "AOT module artifact archive must ends with .tcm"
         tcm_path = Path(filepath).absolute()
         assert tcm_path.parent.exists(), "Output directory doesn't exist"
         temp_dir = mkdtemp(prefix="tcm_")
 
         # Save AOT module
-        mod = Module()
+        mod = Module(arch=arch)
         mod.add_graph('auto_graph', self.compiled_graph)
         mod.save(temp_dir)
 
