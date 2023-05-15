@@ -31,8 +31,4 @@ std::string AutoGraph::load_graph_json(const char *archive_path) {
     return buffer;
 }
 
-void AutoGraph::parse_graph_json(const std::string &graph_json) {
-
-}
-
 }  // namespace auto_graph

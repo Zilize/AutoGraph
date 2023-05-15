@@ -13,6 +13,7 @@ enum ArgumentType {
 };
 
 enum DataType {
+    NONE,
     I8,
     I16,
     I32,

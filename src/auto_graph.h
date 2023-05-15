@@ -11,7 +11,6 @@ public:
 
 protected:
     static std::string load_graph_json(const char *archive_path);
-    static void parse_graph_json(const std::string &graph_json);
 
 private:
 };
