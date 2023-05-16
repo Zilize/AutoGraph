@@ -1,6 +1,8 @@
 #ifndef DEMO_AUTO_GRAPH_H
 #define DEMO_AUTO_GRAPH_H
 
+#include <regex>
+
 #include "taichi/cpp/taichi.hpp"
 #include "graph_context.h"
 
@@ -52,7 +54,7 @@ class AutoGraph {
 
 public:
     AutoGraph(const ti::Runtime &_runtime, const char *archive_path);
-    void launch() const;
+    void launch();
 
     inline GraphArgument &operator[](const char *name) {
         if (graph_arguments.find(name) == graph_arguments.end()) {
@@ -66,6 +68,8 @@ public:
 
 protected:
     static std::string load_graph_json(const char *archive_path);
+    void check_graph_arguments() const;
+    int integer_evaluation(const std::string &expression) const;
 
 private:
     GraphContext *graph_context = nullptr;
@@ -73,6 +77,11 @@ private:
     ti::ComputeGraph compute_graph;
 
     std::unordered_map<std::string, GraphArgument*> graph_arguments{};
+
+    std::regex operation_pattern{R"(^\((.+)([+\-\*/%])(.+)\)$)"};
+    std::regex integer_pattern{R"(^\((-?[1-9]\d*|0)\)$)"};
+    std::regex argument_pattern{"^([a-zA-Z_][a-zA-Z0-9_]*)$"};
+    std::regex shape_pattern{R"(^([a-zA-Z_][a-zA-Z0-9_]*)\{([1-9]\d*|0)\}$)"};
 };
 
 }

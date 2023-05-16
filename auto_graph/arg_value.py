@@ -166,7 +166,8 @@ class IntArgValue(ArgValue):
 
     def __str__(self):
         if self.arg_type == IntArgValue.Type.CONST:
-            return str(self.const_value)
+            return f"({self.const_value})"
+            # return str(self.const_value)
         elif self.arg_type == IntArgValue.Type.GRAPH_VAR:
             return self.graph_var_name
         elif self.arg_type == IntArgValue.Type.SHAPE_VAR:

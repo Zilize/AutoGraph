@@ -34,11 +34,7 @@ std::string AutoGraph::load_graph_json(const char *archive_path) {
     return buffer;
 }
 
-// LaunchContext an AutoGraph: 3 steps
-// 1. check graph arguments
-// 2. allocate arrays
-// 3. launch the compiled graphs
-void AutoGraph::launch() const {
+void AutoGraph::check_graph_arguments() const {
     for (const auto & graph_argument : graph_arguments) {
         if (!graph_argument.second->is_valid()) {
             AUTO_GRAPH_ERROR_FORMAT("Graph argument %s is not assigned", graph_argument.first.c_str());
@@ -78,6 +74,62 @@ void AutoGraph::launch() const {
             }
         }
     }
+}
+
+int AutoGraph::integer_evaluation(const std::string &expression) const {
+    std::smatch match;
+    if (std::regex_match(expression, match, operation_pattern)) {
+        int left = integer_evaluation(match[1].str());
+        int right = integer_evaluation(match[3].str());
+        char op = match[2].str()[0];
+        switch (op) {
+            case '+': return left + right;
+            case '-': return left - right;
+            case '*': return left * right;
+            case '/': return left / right;
+            case '%': return left % right;
+            default: AUTO_GRAPH_ERROR_FORMAT("Invalid operation %c", op);
+        }
+    }
+    else if (std::regex_match(expression, match, integer_pattern)) {
+        int value = std::stoi(match[1]);
+        return value;
+    }
+    else if (std::regex_match(expression, match, argument_pattern)) {
+        std::string argument_name = match[1].str();
+        auto it = graph_arguments.find(argument_name);
+        if (it == graph_arguments.end()) {
+            AUTO_GRAPH_ERROR_FORMAT("Graph argument %s not found", argument_name.c_str());
+        }
+        if (it->second->type != I32) {
+            AUTO_GRAPH_ERROR_FORMAT("Graph argument %s is not an integer", argument_name.c_str());
+        }
+        return it->second->value.i32;
+    }
+    else if (std::regex_match(expression, match, shape_pattern)) {
+        std::string argument_name = match[1].str();
+        auto it = graph_arguments.find(argument_name);
+        if (it == graph_arguments.end()) {
+            AUTO_GRAPH_ERROR_FORMAT("Graph argument %s not found", argument_name.c_str());
+        }
+        if (it->second->type != NDARRAY) {
+            AUTO_GRAPH_ERROR_FORMAT("Graph argument %s is not an Ndarray", argument_name.c_str());
+        }
+        return (int)it->second->value.ndarray.shape.dims[std::stoi(match[2].str())];  // uint32_t to int
+    }
+    else {
+        AUTO_GRAPH_ERROR_FORMAT("The expression %s does not match any regex", expression.c_str());
+    }
+}
+
+// LaunchContext an AutoGraph: 3 steps
+// 1. check graph arguments
+// 2. allocate arrays
+// 3. launch the compiled graphs
+void AutoGraph::launch() {
+    check_graph_arguments();
+    int a = integer_evaluation("((((-1)+(1))*d0{0})+d0{1})");
+    std::cout << a << std::endl;
 }
 
 }  // namespace auto_graph
