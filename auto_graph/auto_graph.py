@@ -524,7 +524,7 @@ class AutoGraph:
         meta_data = {
             "graph_arguments": {},
             "allocated_arrays": {},
-            "launch_contexts": {}
+            "launches": {}
         }
         for graph_argument_name, graph_argument in self.graph_arguments.items():
             meta_data["graph_arguments"][graph_argument_name] = {}
@@ -570,8 +570,8 @@ class AutoGraph:
         for launch_index, launch in enumerate(self.launch_contexts):
             for launch_arg_index, launch_arg in enumerate(launch.args):
                 launch_arg_name = f"kernel_{launch_index}_arg_{launch_arg_index}"
-                meta_data["launch_contexts"][launch_arg_name] = {}
-                launch_arg_entry = meta_data["launch_contexts"][launch_arg_name]
+                meta_data["launches"][launch_arg_name] = {}
+                launch_arg_entry = meta_data["launches"][launch_arg_name]
                 if isinstance(launch_arg, IntArgValue):
                     launch_arg_entry["type"] = "int"
                     launch_arg_entry["dtype"] = "i32"  # TODO

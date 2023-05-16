@@ -18,9 +18,7 @@ AutoGraph::AutoGraph(const ti::Runtime &_runtime, const char *archive_path): run
 std::string AutoGraph::load_graph_json(const char *archive_path) {
     zip *archive = zip_open(archive_path, 0, nullptr);
     if (!archive) {
-        char err_msg[256];
-        std::snprintf(err_msg, sizeof(err_msg), "Cannot open file %s", archive_path);
-        throw std::runtime_error(err_msg);
+        AUTO_GRAPH_ERROR_FORMAT("Cannot open file %s", archive_path);
     }
 
     struct zip_stat st{};
@@ -41,7 +39,45 @@ std::string AutoGraph::load_graph_json(const char *archive_path) {
 // 2. allocate arrays
 // 3. launch the compiled graphs
 void AutoGraph::launch() const {
-
+    for (const auto & graph_argument : graph_arguments) {
+        if (!graph_argument.second->is_valid()) {
+            AUTO_GRAPH_ERROR_FORMAT("Graph argument %s is not assigned", graph_argument.first.c_str());
+        }
+        if (graph_argument.second->context->argument_type == CONTEXT_INT) {
+            if (graph_argument.second->type != I32) {
+                AUTO_GRAPH_ERROR_FORMAT("Input argument %s does not match the context", graph_argument.first.c_str());
+            }
+        }
+        else if (graph_argument.second->context->argument_type == CONTEXT_MATRIX) {
+            AUTO_GRAPH_ERROR("Matrix is not supported by AutoGraph now");
+        }
+        else if (graph_argument.second->context->argument_type == CONTEXT_ARRAY) {
+            if (graph_argument.second->type != NDARRAY) {
+                AUTO_GRAPH_ERROR_FORMAT("Input argument %s does not match the context", graph_argument.first.c_str());
+            }
+            if (graph_argument.second->context->ndim != graph_argument.second->value.ndarray.shape.dim_count) {
+                AUTO_GRAPH_ERROR_FORMAT("The ndim of the input Ndarray %d does not match the context %d",
+                                        graph_argument.second->value.ndarray.shape.dim_count,
+                                        graph_argument.second->context->ndim);
+            }
+            if (graph_argument.second->context->n == 0 && graph_argument.second->context->m == 0) {
+                if (graph_argument.second->value.ndarray.elem_shape.dim_count != 0) {
+                    AUTO_GRAPH_ERROR("The element type of Ndarray is scalar in context but input argument is not");
+                }
+            }
+            else if (graph_argument.second->value.ndarray.elem_shape.dim_count != 2) {
+                AUTO_GRAPH_ERROR("The element type only supports scalar and matrix");
+            }
+            if (graph_argument.second->context->n != graph_argument.second->value.ndarray.elem_shape.dims[0] ||
+                graph_argument.second->context->m != graph_argument.second->value.ndarray.elem_shape.dims[1]) {
+                AUTO_GRAPH_ERROR("The element shape of input argument does not match the context");
+            }
+            if (!check_data_type(graph_argument.second->context->data_type,
+                                 graph_argument.second->value.ndarray.elem_type)) {
+                AUTO_GRAPH_ERROR("The element data type of input argument does not match the context");
+            }
+        }
+    }
 }
 
 }  // namespace auto_graph

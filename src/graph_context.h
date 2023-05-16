@@ -11,30 +11,30 @@
 namespace auto_graph {
 
 struct GraphArgumentContext {
-    GraphArgumentContext(const ArgumentType &_argument_type, const DataType &_data_type, const int &_n=0,
+    GraphArgumentContext(const ContextArgumentType &_argument_type, const ContextDataType &_data_type, const int &_n=0,
                          const int &_m=0, const int &_ndim=0):
                          argument_type(_argument_type), data_type(_data_type), n(_n), m(_m), ndim(_ndim) {}
 
-    ArgumentType argument_type;
-    DataType data_type;
+    ContextArgumentType argument_type;
+    ContextDataType data_type;
     int n, m, ndim;
 };
 
 struct AllocatedArrayContext {
-    AllocatedArrayContext(const DataType &_data_type, std::vector<std::string>* _shape, const int &_n=0,
+    AllocatedArrayContext(const ContextDataType &_data_type, std::vector<std::string>* _shape, const int &_n=0,
                           const int &_m=0): data_type(_data_type), shape(_shape), n(_n), m(_m) {}
 
-    DataType data_type;
+    ContextDataType data_type;
     std::vector<std::string> *shape;
     int n, m;
 };
 
 struct LaunchContext {
-    LaunchContext(const ArgumentType &_argument_type, const DataType &_data_type, std::string _value):
+    LaunchContext(const ContextArgumentType &_argument_type, const ContextDataType &_data_type, std::string _value):
                   argument_type(_argument_type), data_type(_data_type), value(std::move(_value)) {}
 
-    ArgumentType argument_type;
-    DataType data_type;
+    ContextArgumentType argument_type;
+    ContextDataType data_type;
     std::string value;
 };
 

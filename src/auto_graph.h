@@ -6,22 +6,31 @@
 
 namespace auto_graph {
 
+typedef enum ArgumentType {
+    I32,
+    NDARRAY
+} ArgumentType;
+
 typedef union ArgumentValue {
     int32_t i32;
     TiNdArray ndarray;
 } ArgumentValue;
 
 class GraphArgument {
+    friend class AutoGraph;
+
 public:
     explicit GraphArgument(const GraphArgumentContext *_context): context(_context), valid(false) {}
 
     inline GraphArgument &operator=(int32_t i32) {
         valid = true;
+        type = I32;
         value.i32 = i32;
         return *this;
     }
     inline GraphArgument &operator=(const TiNdArray &ndarray) {
         valid = true;
+        type = NDARRAY;
         value.ndarray = ndarray;
         return *this;
     }
@@ -34,6 +43,7 @@ private:
     const GraphArgumentContext *context;
     bool valid;
 
+    ArgumentType type{};
     ArgumentValue value{};
 };
 
@@ -44,10 +54,13 @@ public:
     AutoGraph(const ti::Runtime &_runtime, const char *archive_path);
     void launch() const;
 
-    inline GraphArgument operator[](const char *name) {
+    inline GraphArgument &operator[](const char *name) {
+        if (graph_arguments.find(name) == graph_arguments.end()) {
+            throw std::runtime_error("Graph argument not found in the context");
+        }
         return *graph_arguments[name];
     }
-    inline GraphArgument operator[](const std::string &name) {
+    inline GraphArgument &operator[](const std::string &name) {
         return operator[](name.c_str());
     }
 

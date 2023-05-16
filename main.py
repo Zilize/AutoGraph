@@ -48,9 +48,8 @@ def run_sim(i: int, j: ti.i32, x: ti.types.ndarray(dtype=ti.f32, ndim=2)):
 def kernel_types(
         a: ti.i32,
         b: ti.i32,
-        d: ti.types.matrix(n=2, m=3, dtype=ti.i32),
-        e: ti.types.ndarray(dtype=ti.f32, ndim=2),
-        g: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=3, dtype=ti.f32), ndim=4)
+        c: ti.types.ndarray(dtype=ti.f32, ndim=2),
+        d: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=3, dtype=ti.f32), ndim=4)
 ):
     i = a + b
 
@@ -59,17 +58,15 @@ def kernel_types(
 def run_types(
         a0: int,
         b0: ti.i32,
-        c0: ti.types.matrix(n=2, m=3, dtype=ti.i32),
-        d0: ti.types.ndarray(dtype=ti.f32, ndim=2),
-        e0: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=3, dtype=ti.f32), ndim=4)
+        c0: ti.types.ndarray(dtype=ti.f32, ndim=2),
+        d0: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=3, dtype=ti.f32), ndim=4)
 ):
-    kernel_types(a0, b0, c0, d0, e0)
+    kernel_types(a0, b0, c0, d0)
     a1 = 1
     b1 = 2
-    c1 = ti.types.matrix(n=2, m=3, dtype=ti.i32)([[1, 2, 3], [4, 5, 6]])
-    d1 = ti.ScalarNdarray(dtype=ti.f32, arr_shape=(a1, 4))
-    e1 = ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(e0.shape[0], e0.shape[1], e0.shape[2], e0.shape[3]))
-    kernel_types(a1, b1, c1, d1, e1)
+    c1 = ti.ScalarNdarray(dtype=ti.f32, arr_shape=(a1, 4))
+    d1 = ti.MatrixNdarray(n=2, m=3, dtype=ti.f32, shape=(d0.shape[0], d0.shape[1], d0.shape[2], d0.shape[3]))
+    kernel_types(a1, b1, c1, d1)
 
 
 # @auto_graph
