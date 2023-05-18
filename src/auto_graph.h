@@ -70,6 +70,7 @@ protected:
     static std::string load_graph_json(const char *archive_path);
     void check_graph_arguments() const;
     int integer_evaluation(const std::string &expression) const;
+    void allocate_arrays();
 
 private:
     GraphContext *graph_context = nullptr;
@@ -77,6 +78,7 @@ private:
     ti::ComputeGraph compute_graph;
 
     std::unordered_map<std::string, GraphArgument*> graph_arguments{};
+    std::unordered_map<std::string, TiNdArray> allocated_arrays{};
 
     std::regex operation_pattern{R"(^\((.+)([+\-\*/%])(.+)\)$)"};
     std::regex integer_pattern{R"(^\((-?[1-9]\d*|0)\)$)"};

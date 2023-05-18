@@ -122,14 +122,61 @@ int AutoGraph::integer_evaluation(const std::string &expression) const {
     }
 }
 
+void AutoGraph::allocate_arrays() {
+    for (const auto& allocated_array_context: graph_context->allocated_array_contexts) {
+        std::vector<uint32_t> shape, elem_shape;
+        for (const auto &shape_str: *(allocated_array_context.second->shape)) {
+            shape.emplace_back((uint32_t) integer_evaluation(shape_str));
+        }
+        if (allocated_array_context.second->n != 0 && allocated_array_context.second->m != 0) {
+            elem_shape.emplace_back(allocated_array_context.second->n);
+            elem_shape.emplace_back(allocated_array_context.second->m);
+        }
+        const auto &array_name = allocated_array_context.first;
+        const auto &data_type = allocated_array_context.second->data_type;
+        if (data_type == CONTEXT_I8) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<int8_t>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_I16) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<int16_t>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_I32) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<int32_t>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_I64) {
+            AUTO_GRAPH_ERROR("Ndarray allocation for I64 not supported yet");
+        }
+        else if (data_type == CONTEXT_F16) {
+            AUTO_GRAPH_ERROR("Ndarray allocation for F16 not supported yet");
+        }
+        else if (data_type == CONTEXT_F32) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<float>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_F64) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<double>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_U8) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<uint8_t>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_U16) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<uint16_t>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_U32) {
+            allocated_arrays[array_name] = runtime->allocate_ndarray<uint32_t>(shape, elem_shape, true);
+        }
+        else if (data_type == CONTEXT_U64) {
+            AUTO_GRAPH_ERROR("Ndarray allocation for U64 not supported yet");
+        }
+    }
+}
+
 // LaunchContext an AutoGraph: 3 steps
 // 1. check graph arguments
 // 2. allocate arrays
 // 3. launch the compiled graphs
 void AutoGraph::launch() {
     check_graph_arguments();
-    int a = integer_evaluation("((((-1)+(1))*d0{0})+d0{1})");
-    std::cout << a << std::endl;
+    allocate_arrays();
 }
 
 }  // namespace auto_graph
