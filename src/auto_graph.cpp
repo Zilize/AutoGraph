@@ -6,8 +6,11 @@
 
 namespace auto_graph {
 
-AutoGraph::AutoGraph(const ti::Runtime &_runtime, const char *archive_path): runtime(const_cast<ti::Runtime *>(&_runtime)),
-                     compute_graph(runtime->load_aot_module(archive_path).get_compute_graph("auto_graph")) {
+AutoGraph::AutoGraph(const ti::Runtime &_runtime, const char *archive_path): runtime(const_cast<ti::Runtime *>(&_runtime)) {
+    aot_module = runtime->load_aot_module(archive_path);
+    compute_graph = aot_module.get_compute_graph("auto_graph");
+//    compute_graph = runtime->load_aot_module(archive_path).get_compute_graph("auto_graph");
+
     std::string graph_json_string = load_graph_json(archive_path);
     graph_context = new GraphContext(graph_json_string.c_str());
     for (const auto& graph_argument_context: graph_context->graph_argument_contexts) {

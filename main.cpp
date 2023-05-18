@@ -4,18 +4,15 @@
 
 int main() {
     ti::Runtime runtime(TI_ARCH_VULKAN);
-
-    auto arr = runtime.allocate_ndarray<int32_t>({5}, {}, true);
-
-//    ti::AotModule aot_module = runtime.load_aot_module("../auto_graph.tcm");
-//    ti::ComputeGraph graph = aot_module.get_compute_graph("auto_graph");
-//    graph["kernel_0_arg_0"] = 1;
-//    graph["kernel_0_arg_1"] = arr;
-
     auto_graph::AutoGraph graph(runtime, "../auto_graph.tcm");
-    graph["delta"] = 1;
-    graph["arr"] = arr;
 
+    auto arr = runtime.allocate_ndarray<float>({5}, {}, true);
+    graph["arr"] = arr;
     graph.launch();
+
+    auto arr_data = (const float*)arr.map();
+    for (int i = 0; i < 5; ++i) std::cout << arr_data[i] << std::endl;
+    arr.unmap();
+
     return 0;
 }

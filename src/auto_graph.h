@@ -75,6 +75,7 @@ protected:
 private:
     GraphContext *graph_context = nullptr;
     ti::Runtime *runtime = nullptr;
+    ti::AotModule aot_module;
     ti::ComputeGraph compute_graph;
 
     std::unordered_map<std::string, GraphArgument*> graph_arguments{};
