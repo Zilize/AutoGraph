@@ -5,13 +5,16 @@
 int main() {
     ti::Runtime runtime(TI_ARCH_VULKAN);
 
-    auto c0 = runtime.allocate_ndarray<float>({3, 4}, {}, true);
-    auto d0 = runtime.allocate_ndarray<float>({2, 2, 2, 2}, {2, 3}, true);
+    auto arr = runtime.allocate_ndarray<int32_t>({5}, {}, true);
+
+//    ti::AotModule aot_module = runtime.load_aot_module("../auto_graph.tcm");
+//    ti::ComputeGraph graph = aot_module.get_compute_graph("auto_graph");
+//    graph["kernel_0_arg_0"] = 1;
+//    graph["kernel_0_arg_1"] = arr;
+
     auto_graph::AutoGraph graph(runtime, "../auto_graph.tcm");
-    graph["a0"] = 1;
-    graph["b0"] = 2;
-    graph["c0"] = c0;
-    graph["d0"] = d0;
+    graph["delta"] = 1;
+    graph["arr"] = arr;
 
     graph.launch();
     return 0;

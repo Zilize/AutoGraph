@@ -177,6 +177,28 @@ void AutoGraph::allocate_arrays() {
 void AutoGraph::launch() {
     check_graph_arguments();
     allocate_arrays();
+    for (const auto &launch_context: graph_context->launch_contexts) {
+        const auto &argument_name = launch_context.first;
+        if (launch_context.second->argument_type == CONTEXT_INT) {
+            compute_graph[argument_name] = integer_evaluation(launch_context.second->value);
+        }
+        else if (launch_context.second->argument_type == CONTEXT_MATRIX) {
+            AUTO_GRAPH_ERROR("Matrix not supported by compute graph launch yet");
+        }
+        else if (launch_context.second->argument_type == CONTEXT_ARRAY) {
+            if (graph_arguments.find(launch_context.second->value) != graph_arguments.end()) {
+                compute_graph[argument_name] = graph_arguments[launch_context.second->value]->value.ndarray;
+            }
+            else if (allocated_arrays.find(launch_context.second->value) != allocated_arrays.end()) {
+                compute_graph[argument_name] = allocated_arrays[launch_context.second->value];
+            }
+            else {
+                AUTO_GRAPH_ERROR_FORMAT("Ndarray name %s not found", launch_context.second->value.c_str());
+            }
+        }
+    }
+    compute_graph.launch();
+    runtime->wait();
 }
 
 }  // namespace auto_graph

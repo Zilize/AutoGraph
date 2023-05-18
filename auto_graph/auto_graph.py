@@ -465,7 +465,7 @@ class AutoGraph:
         for launch_index, launch in enumerate(self.launch_contexts):
             sym_args = []
             for launch_arg_index, launch_arg in enumerate(launch.args):
-                sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
+                sym_name = f"kernel_{launch_index}_arg_{launch_arg_index}"
                 if isinstance(launch_arg, IntArgValue):
                     int_type = launch.kernel_fn._primal.arguments[launch_arg_index].annotation
                     sym_arg = Arg(ArgKind.SCALAR, sym_name, int_type)
@@ -515,7 +515,7 @@ class AutoGraph:
         compiled_graph_args = {}
         for launch_index, launch in enumerate(self.launch_contexts):
             for launch_arg_index, launch_arg in enumerate(launch.args):
-                sym_name = f"launch_{launch_index}_arg_{launch_arg_index}"
+                sym_name = f"kernel_{launch_index}_arg_{launch_arg_index}"
                 compiled_graph_args[sym_name] = launch_arg.get_value()
         self.compiled_graph.run(compiled_graph_args)
 
