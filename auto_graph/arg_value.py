@@ -438,33 +438,3 @@ class ArrayArgValue(ArgValue):
 
     def __repr__(self):
         return f"ArrayArgValue with Type({self.arg_type.name}), Id({id(self)})"
-
-
-if __name__ == '__main__':
-    u = ti.types.matrix(n=1, m=2, dtype=ti.f32)
-    v = ti.types.matrix(n=2, m=1, dtype=ti.f32)
-    w = ti.types.vector(n=3, dtype=ti.f32)
-
-    a = IntArgValue(IntArgValue.Type.CONST, const_value=1)
-    b = IntArgValue(IntArgValue.Type.CONST, const_value=2)
-    x = IntArgValue(IntArgValue.Type.GRAPH_VAR, graph_var_name="x")
-    y = IntArgValue(IntArgValue.Type.SHAPE_VAR,
-                    shape_var_array=ArrayArgValue(ArrayArgValue.Type.GRAPH_VAR,
-                                                  graph_var_name='arr',
-                                                  graph_var_ndim=2,
-                                                  graph_var_dtype=ti.f32),
-                    shape_var_dim=1)
-    t0 = (a + x) / (b * y)
-    t1 = t0 + a
-    print(t0)
-    print(t1)
-
-    mat_a = ti.Matrix([[1, 2], [3, 4]])
-    mat_b = ti.Matrix([[1, 1], [1, 1]])
-    mat_c = ti.Matrix([[1, 1, 1], [2, 2, 2]])
-    a = MatrixArgValue(MatrixArgValue.Type.CONST, const_value=mat_a)
-    b = MatrixArgValue(MatrixArgValue.Type.CONST, const_value=mat_b)
-    c = MatrixArgValue(MatrixArgValue.Type.CONST, const_value=mat_c)
-    x = MatrixArgValue(MatrixArgValue.Type.GRAPH_VAR, graph_var_name='x', graph_var_n=2, graph_var_m=2, graph_var_dtype=ti.f32)
-    t = (a + b * x) @ c
-    print(t)

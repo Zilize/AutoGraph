@@ -13,7 +13,7 @@ You can add the Python decorator `@auto_graph` to the Python function correspond
 - Allocating various types of Taichi Ndarray
 - Launching Taichi kernels without return values
 
-You can try out AutoGraph through the example in `main.py` and `main.cpp`:
+You can try out AutoGraph through the examples in `main.py` and `main.cpp`:
 
 ```python
 import taichi as ti
