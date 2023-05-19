@@ -17,3 +17,6 @@ target_include_directories(${AUTO_GRAPH_NAME} PUBLIC ${TAICHI_C_API_INSTALL_DIR}
 # Find and link libzip.
 find_library(LIBZIP_LIBRARY NAMES zip)
 target_link_libraries(${AUTO_GRAPH_NAME} ${LIBZIP_LIBRARY})
+
+# Include rapidjson.
+target_include_directories(${AUTO_GRAPH_NAME} PUBLIC external/rapidjson/include)

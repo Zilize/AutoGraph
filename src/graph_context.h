@@ -4,8 +4,8 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
-#include <rapidjson/document.h>
 
+#include "rapidjson/document.h"
 #include "common.h"
 
 namespace auto_graph {
