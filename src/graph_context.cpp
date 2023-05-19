@@ -1,8 +1,6 @@
 #include "common.h"
 #include "graph_context.h"
 
-#include <utility>
-
 namespace auto_graph {
 
 GraphContext::GraphContext(const char *graph_json): document(rapidjson::Document()) {
