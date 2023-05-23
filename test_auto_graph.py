@@ -2,7 +2,8 @@ import numpy as np
 import taichi as ti
 from auto_graph import auto_graph
 
-arch = ti.vulkan
+arch = ti.cpu
+ti.init(arch=arch)
 
 
 @ti.kernel
@@ -35,7 +36,6 @@ def graph_types(
 
 
 def test_types():
-    ti.init(arch=arch)
     a = 1
     b = ti.Vector(np.ones(3), dt=ti.i32)
     c = ti.Matrix(np.ones((3, 3)), dt=ti.i32)
@@ -54,3 +54,171 @@ def test_types():
     assert np.array_equal(d.to_numpy(), np_d)
     assert np.array_equal(e.to_numpy(), np_e)
     assert np.array_equal(f.to_numpy(), np_f)
+
+
+@ti.kernel
+def kernel_delta_scalar(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.i32, ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta
+
+
+@ti.kernel
+def kernel_scalar(delta_arr: ti.types.ndarray(dtype=ti.i32, ndim=2), arr: ti.types.ndarray(dtype=ti.i32, ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta_arr[i]
+
+
+@auto_graph
+def graph_scalar_0(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.i32, ndim=2)):
+    delta_arr = ti.ndarray(dtype=ti.i32, shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_scalar(delta, delta_arr)
+    kernel_scalar(delta_arr, arr)
+
+
+@auto_graph
+def graph_scalar_1(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.i32, ndim=2)):
+    delta_arr = ti.ScalarNdarray(dtype=ti.i32, arr_shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_scalar(delta, delta_arr)
+    kernel_scalar(delta_arr, arr)
+
+
+def test_scalar():
+    delta = 1
+    arr = ti.ndarray(dtype=ti.i32, shape=(3, 4))
+
+    graph_scalar_0.compile()
+    graph_scalar_0.run({"delta": delta, "arr": arr})
+
+    np_arr = np.ones((3, 4), dtype=np.int32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+    delta = 1
+    arr = ti.ndarray(dtype=ti.i32, shape=(3, 4))
+
+    graph_scalar_1.compile()
+    graph_scalar_1.run({"delta": delta, "arr": arr})
+
+    np_arr = np.ones((3, 4), dtype=np.int32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+
+@ti.kernel
+def kernel_delta_vector(delta: ti.types.vector(n=3, dtype=ti.f32),
+                        arr: ti.types.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta
+
+
+@ti.kernel
+def kernel_vector(delta_arr: ti.types.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), ndim=2),
+                  arr: ti.types.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta_arr[i]
+
+
+@auto_graph
+def graph_vector_0(delta: ti.types.vector(n=3, dtype=ti.f32),
+                   arr: ti.types.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), ndim=2)):
+    delta_arr = ti.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_vector(delta, delta_arr)
+    kernel_vector(delta_arr, arr)
+
+
+@auto_graph
+def graph_vector_1(delta: ti.types.vector(n=3, dtype=ti.f32),
+                   arr: ti.types.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), ndim=2)):
+    delta_arr = ti.VectorNdarray(n=3, dtype=ti.f32, shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_vector(delta, delta_arr)
+    kernel_vector(delta_arr, arr)
+
+
+@auto_graph
+def graph_vector_2(delta: ti.types.vector(n=3, dtype=ti.f32),
+                   arr: ti.types.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), ndim=2)):
+    delta_arr = ti.Vector.ndarray(n=3, dtype=ti.f32, shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_vector(delta, delta_arr)
+    kernel_vector(delta_arr, arr)
+
+
+def test_vector():
+    delta = ti.types.vector(n=3, dtype=ti.f32)([1.0, 1.0, 1.0])
+    arr = ti.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), shape=(3, 4))
+    graph_vector_0.compile()
+    graph_vector_0.run({"delta": delta, "arr": arr})
+    np_arr = np.ones((3, 4, 3), dtype=np.float32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+    delta = ti.types.vector(n=3, dtype=ti.f32)([1.0, 1.0, 1.0])
+    arr = ti.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), shape=(3, 4))
+    graph_vector_1.compile()
+    graph_vector_1.run({"delta": delta, "arr": arr})
+    np_arr = np.ones((3, 4, 3), dtype=np.float32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+    delta = ti.types.vector(n=3, dtype=ti.f32)([1.0, 1.0, 1.0])
+    arr = ti.ndarray(dtype=ti.types.vector(n=3, dtype=ti.f32), shape=(3, 4))
+    graph_vector_2.compile()
+    graph_vector_2.run({"delta": delta, "arr": arr})
+    np_arr = np.ones((3, 4, 3), dtype=np.float32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+
+@ti.kernel
+def kernel_delta_matrix(delta: ti.types.matrix(n=2, m=2, dtype=ti.f32),
+                        arr: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta
+
+
+@ti.kernel
+def kernel_matrix(delta_arr: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), ndim=2),
+                  arr: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta_arr[i]
+
+
+@auto_graph
+def graph_matrix_0(delta: ti.types.matrix(n=2, m=2, dtype=ti.f32),
+                   arr: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), ndim=2)):
+    delta_arr = ti.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_matrix(delta, delta_arr)
+    kernel_matrix(delta_arr, arr)
+
+
+@auto_graph
+def graph_matrix_1(delta: ti.types.matrix(n=2, m=2, dtype=ti.f32),
+                   arr: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), ndim=2)):
+    delta_arr = ti.MatrixNdarray(n=2, m=2, dtype=ti.f32, shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_matrix(delta, delta_arr)
+    kernel_matrix(delta_arr, arr)
+
+
+@auto_graph
+def graph_matrix_2(delta: ti.types.matrix(n=2, m=2, dtype=ti.f32),
+                   arr: ti.types.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), ndim=2)):
+    delta_arr = ti.Matrix.ndarray(n=2, m=2, dtype=ti.f32, shape=(arr.shape[0], arr.shape[1]))
+    kernel_delta_matrix(delta, delta_arr)
+    kernel_matrix(delta_arr, arr)
+
+
+def test_matrix():
+    delta = ti.types.matrix(n=2, m=2, dtype=ti.f32)([[1.0, 1.0], [1.0, 1.0]])
+    arr = ti.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), shape=(3, 4))
+    graph_matrix_0.compile()
+    graph_matrix_0.run({"delta": delta, "arr": arr})
+    np_arr = np.ones((3, 4, 2, 2), dtype=np.float32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+    delta = ti.types.matrix(n=2, m=2, dtype=ti.f32)([[1.0, 1.0], [1.0, 1.0]])
+    arr = ti.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), shape=(3, 4))
+    graph_matrix_1.compile()
+    graph_matrix_1.run({"delta": delta, "arr": arr})
+    np_arr = np.ones((3, 4, 2, 2), dtype=np.float32)
+    assert np.array_equal(arr.to_numpy(), np_arr)
+
+    delta = ti.types.matrix(n=2, m=2, dtype=ti.f32)([[1.0, 1.0], [1.0, 1.0]])
+    arr = ti.ndarray(dtype=ti.types.matrix(n=2, m=2, dtype=ti.f32), shape=(3, 4))
+    graph_matrix_2.compile()
+    graph_matrix_2.run({"delta": delta, "arr": arr})
+    np_arr = np.ones((3, 4, 2, 2), dtype=np.float32)
+    assert np.array_equal(arr.to_numpy(), np_arr)

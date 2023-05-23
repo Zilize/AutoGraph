@@ -361,7 +361,7 @@ class AutoGraph:
             )
             self.allocated_arrays.append(array)
             self.variables[node.targets[0].id] = array
-        elif func == VectorNdarray:
+        elif func == VectorNdarray or func == Vector.ndarray:
             args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
             array = ArrayArgValue(
                 arg_type=ArrayArgValue.Type.ALLOC_VAR,
@@ -369,7 +369,7 @@ class AutoGraph:
             )
             self.allocated_arrays.append(array)
             self.variables[node.targets[0].id] = array
-        elif func == MatrixNdarray:
+        elif func == MatrixNdarray or func == Matrix.ndarray:
             args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
             array = ArrayArgValue(
                 arg_type=ArrayArgValue.Type.ALLOC_VAR,

@@ -275,7 +275,6 @@ class VectorArgValue(ArgValue):
         self.set_annotation(VectorType(n=self.n, dtype=self.dtype))
 
     def get_value(self):
-        ArgValue.arg_value_buffer.append(self)
         assert self.value is not None
         return self.value
 
@@ -312,7 +311,6 @@ class MatrixArgValue(ArgValue):
         self.set_annotation(MatrixType(n=self.n, m=self.m, ndim=2, dtype=self.dtype))
 
     def get_value(self):
-        ArgValue.arg_value_buffer.append(self)
         assert self.value is not None
         return self.value
 
