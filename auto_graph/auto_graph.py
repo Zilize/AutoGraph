@@ -23,7 +23,7 @@ from taichi.types.ndarray_type import NdarrayType
 from taichi.graph import Arg, ArgKind, GraphBuilder
 from taichi.aot import Module
 
-from auto_graph.arg_value import ArgValue, IntArgValue, MatrixArgValue, ArrayArgValue
+from auto_graph.arg_value import ArgValue, IntArgValue, VectorArgValue, MatrixArgValue, ArrayArgValue
 from auto_graph.allocation import Allocation
 
 
@@ -147,8 +147,6 @@ class AutoGraph:
                                              f"type annotated")
             else:
                 if isinstance(annotation, NdarrayType):
-                    if isinstance(annotation.dtype, VectorType):
-                        raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
                     self.graph_arguments[arg_name] = ArrayArgValue(
                         arg_type=ArrayArgValue.Type.GRAPH_VAR,
                         graph_var_name=arg_name,
@@ -156,7 +154,12 @@ class AutoGraph:
                         graph_var_dtype=annotation.dtype
                     )
                 elif isinstance(annotation, VectorType):
-                    raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
+                    self.graph_arguments[arg_name] = VectorArgValue(
+                        arg_type=VectorArgValue.Type.GRAPH_VAR,
+                        graph_var_name=arg_name,
+                        graph_var_n=annotation.n,
+                        graph_var_dtype=annotation.dtype
+                    )
                 elif isinstance(annotation, MatrixType):
                     self.graph_arguments[arg_name] = MatrixArgValue(
                         arg_type=MatrixArgValue.Type.GRAPH_VAR,
@@ -224,12 +227,8 @@ class AutoGraph:
         kernel_fn = self.global_kernels[node.func.id]
         parameters = kernel_fn._primal.arguments
         for parameter in parameters:
-            if id(parameter.annotation) in [id(int), id(float)]:
-                raise TaichiCompilationError(f"Builtin primitive types are not supported in auto-graph")
-            if isinstance(parameter.annotation, VectorType):
-                raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
-            if isinstance(parameter.annotation, NdarrayType) and isinstance(parameter.annotation.dtype, VectorType):
-                raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
+            if id(parameter.annotation) in primitive_types.type_ids and id(parameter.annotation) != id(int32):
+                raise TaichiCompilationError(f"Primitive types except int32 not supported in auto-graph")
         kernel_arguments = []
         for arg in node.args:
             if isinstance(arg, ast.Name):
@@ -363,7 +362,13 @@ class AutoGraph:
             self.allocated_arrays.append(array)
             self.variables[node.targets[0].id] = array
         elif func == VectorNdarray:
-            raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
+            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            array = ArrayArgValue(
+                arg_type=ArrayArgValue.Type.ALLOC_VAR,
+                alloc_var=self._cook_allocation_vector_ndarray(*args, **kwargs)
+            )
+            self.allocated_arrays.append(array)
+            self.variables[node.targets[0].id] = array
         elif func == MatrixNdarray:
             args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
             array = ArrayArgValue(
@@ -373,18 +378,9 @@ class AutoGraph:
             self.allocated_arrays.append(array)
             self.variables[node.targets[0].id] = array
         elif func == Vector or isinstance(func, VectorType):
-            raise TaichiCompilationError(f"Taichi vector is not supported in auto-graph")
+            raise TaichiCompilationError(f"Taichi vector initialization is not supported in auto-graph")
         elif func == Matrix or isinstance(func, MatrixType):
-            if len(node.value.args) != 1:
-                raise TaichiCompilationError(f"Unsupported argument number for {func}")
-            try:
-                const_matrix = ast.literal_eval(ast.unparse(node.value.args[0]))
-            except Exception:
-                raise TaichiCompilationError(f"Argument for {func} must be literal lists")
-            self.variables[node.targets[0].id] = MatrixArgValue(
-                arg_type=MatrixArgValue.Type.CONST,
-                const_value=func(const_matrix)
-            )
+            raise TaichiCompilationError(f"Taichi matrix initialization is not supported in auto-graph")
         else:
             raise TaichiCompilationError(f"Unsupported function call {type(func)} in Taichi auto-graph")
 
@@ -435,7 +431,11 @@ class AutoGraph:
         elif isinstance(node, ast.BinOp):
             left = self._construct_expression(node.left)
             right = self._construct_expression(node.right)
-            assert isinstance(left, IntArgValue) or isinstance(left, MatrixArgValue)
+            if isinstance(left, VectorArgValue) or isinstance(right, VectorArgValue):
+                raise TaichiCompilationError(f"Taichi vector is not supported in binary operation")
+            if isinstance(left, MatrixArgValue) or isinstance(right, MatrixArgValue):
+                raise TaichiCompilationError(f"Taichi matrix is not supported in binary operation")
+            assert isinstance(left, IntArgValue) and isinstance(right, IntArgValue)
 
             if type(left) == type(right):
                 if isinstance(node.op, ast.Add):
@@ -448,8 +448,6 @@ class AutoGraph:
                     return left / right
                 elif isinstance(node.op, ast.Mod):
                     return left % right
-                elif isinstance(node.op, ast.MatMult) and isinstance(left, MatrixArgValue):
-                    return left @ right
                 else:
                     raise TaichiCompilationError(f"Unsupported binary operator {type(node.op)} between {type(left)}")
             else:
@@ -469,6 +467,8 @@ class AutoGraph:
                 if isinstance(launch_arg, IntArgValue):
                     int_type = launch.kernel_fn._primal.arguments[launch_arg_index].annotation
                     sym_arg = Arg(ArgKind.SCALAR, sym_name, int_type)
+                elif isinstance(launch_arg, VectorArgValue):
+                    sym_arg = Arg(ArgKind.MATRIX, sym_name, VectorType(n=launch_arg.n, dtype=launch_arg.dtype))
                 elif isinstance(launch_arg, MatrixArgValue):
                     sym_arg = Arg(ArgKind.MATRIX, sym_name, MatrixType(n=launch_arg.n, m=launch_arg.m, ndim=2,
                                                                        dtype=launch_arg.dtype))
