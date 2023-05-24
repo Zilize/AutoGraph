@@ -1,5 +1,6 @@
 import ast
 import json
+import types
 import inspect
 import functools
 from typing import cast
@@ -24,6 +25,18 @@ from taichi.graph import Arg, ArgKind, GraphBuilder
 from taichi.aot import Module
 
 from auto_graph.arg_value import Allocation, ArgValue, IntArgValue, VectorArgValue, MatrixArgValue, ArrayArgValue
+
+
+class AutoGraphError(TaichiCompilationError):
+    """Thrown when an error is found during compilation."""
+    def __init__(self, message, error_info):
+        message = f"an error occurred during auto-graph compilation.\n" \
+                  f"\tFile path      : {error_info['file_name']}\n" \
+                  f"\tGraph name     : {error_info['graph_name']}\n" \
+                  f"\tLine number    : {error_info['lineno']}\n" \
+                  f"\tCode snippet   : {error_info['code'].strip()}\n" \
+                  f"\tError message  : {message}\n"
+        super().__init__(message)
 
 
 class Launch:
@@ -91,7 +104,9 @@ def auto_graph(fn):
         >>>     foo(x, delta)
     """
     if fn.__qualname__ != fn.__name__:
-        raise TaichiCompilationError(f"Taichi auto graph {fn.__name__} must be defined at the top level")
+        raise TaichiCompilationError(f"Taichi auto-graph {fn.__name__} must be defined at the top level")
+    if not isinstance(fn, types.FunctionType):
+        raise TaichiCompilationError(f"Taichi auto-graph {fn.__name__} must be defined as a function")
     graph = AutoGraph(fn)
 
     @functools.wraps(fn)
@@ -118,9 +133,30 @@ class AutoGraph:
         self.shape_arguments = []
         self.graph_builder = None
         self.compiled_graph = None
+        self.source = None
+        self.first_lineno = None
+        self.source_lines = None
+        self.file_name = None
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
+
+    def error_info(self, node):
+        graph_name = self.func.__name__
+        lineno = self.first_lineno + node.lineno - 1
+        code = self.source_lines[node.lineno - 1]
+        return {
+            "file_name": self.file_name,
+            "graph_name": graph_name,
+            "lineno": lineno,
+            "code": code
+        }
+
+    def extract_source(self):
+        self.source = inspect.getsource(self.func)
+        self.first_lineno = self.func.__code__.co_firstlineno
+        self.source_lines = inspect.getsourcelines(self.func)[0]
+        self.file_name = inspect.getfile(self.func)
 
     def extract_arguments(self):
         sig = inspect.signature(self.func)
@@ -184,10 +220,10 @@ class AutoGraph:
                 self.global_kernels[key] = value
 
     def parse_function_body(self):
-        source = inspect.getsource(self.func)
-        graph_definition = ast.parse(source).body[0]
+        graph_definition = ast.parse(self.source).body[0]
         if not isinstance(graph_definition, ast.FunctionDef):
-            raise TaichiCompilationError(f"Taichi auto-graph {self.func.__name__} must be defined as a Python function")
+            raise AutoGraphError(f"Taichi auto-graph \"{self.func.__name__}\" must be defined as a Python function",
+                                 self.error_info(graph_definition))
 
         statements = graph_definition.body
         for statement in statements:
@@ -209,11 +245,13 @@ class AutoGraph:
                     elif isinstance(value, ast.BinOp):
                         self.parse_expression_assignment(target, value)
                     else:
-                        raise TaichiCompilationError(f"Assignment value type {type(value)} is unsupported")
+                        raise AutoGraphError(f"Assignment value type \"{type(value)}\" is unsupported",
+                                             self.error_info(statement))
                 elif isinstance(target, ast.Tuple):
                     assert isinstance(statement.value, ast.Tuple)
                     if len(target.elts) != len(statement.value.elts):
-                        raise TaichiCompilationError(f"Assignment values number does not match targets number")
+                        raise AutoGraphError(f"Assignment values number does not match targets number",
+                                             self.error_info(statement))
                     for target_item, value_item in zip(target.elts, value.elts):
                         assert isinstance(target_item, ast.Name)
                         if isinstance(value_item, ast.Call):
@@ -227,13 +265,15 @@ class AutoGraph:
                         elif isinstance(value_item, ast.BinOp):
                             self.parse_expression_assignment(target_item, value_item)
                         else:
-                            raise TaichiCompilationError(f"Assignment value type {type(value_item)} is unsupported")
+                            raise AutoGraphError(f"Assignment value type \"{type(value_item)}\" is unsupported",
+                                                 self.error_info(statement))
                 else:
-                    raise TaichiCompilationError(f"Assignment target type {type(target)} is unsupported")
+                    raise AutoGraphError(f"Assignment target type \"{type(target)}\" is unsupported",
+                                         self.error_info(statement))
             else:
-                raise TaichiCompilationError(f"The statement in Taichi auto-graph {self.func.__name__} must be "
-                                             f"assignments or kernel launch_contexts (without return value): "
-                                             f"\"{ast.unparse(cast(ast.AST, statement))}\"")
+                raise AutoGraphError(f"The statement in Taichi auto-graph \"{self.func.__name__}\" must be "
+                                     f"assignments or kernel launch_contexts (without return value)",
+                                     self.error_info(statement))
 
     @staticmethod
     def _check_kernel_arguments(parameters, kernel_arguments):
@@ -243,23 +283,27 @@ class AutoGraph:
         return True
 
     def parse_kernel_launch(self, node):
+        if node.func.id not in self.global_kernels:
+            raise AutoGraphError(f"Kernel \"{node.func.id}\" not found in global kernels", self.error_info(node))
         kernel_fn = self.global_kernels[node.func.id]
         parameters = kernel_fn._primal.arguments
         for parameter in parameters:
             if id(parameter.annotation) in primitive_types.type_ids and id(parameter.annotation) != id(int32):
-                raise TaichiCompilationError(f"Primitive types except int32 not supported in auto-graph")
+                raise AutoGraphError(f"Primitive types except int32 not supported in auto-graph", self.error_info(node))
         kernel_arguments = []
         for arg in node.args:
             if isinstance(arg, ast.Name):
                 if arg.id not in self.variables:
-                    raise TaichiCompilationError(f"Undefined variable {arg.id}")
+                    raise AutoGraphError(f"Undefined variable \"{arg.id}\"", self.error_info(node))
                 kernel_arguments.append(self.variables[arg.id])
             elif isinstance(arg, ast.Constant) or isinstance(arg, ast.Subscript) or isinstance(arg, ast.BinOp):
                 kernel_arguments.append(self._construct_expression(arg))
             else:
-                raise TaichiCompilationError(f"Invalid argument in kernel {kernel_fn.__name__}")
+                raise AutoGraphError(f"Invalid argument in kernel \"{kernel_fn.__name__}\"", self.error_info(node))
+        if len(parameters) != len(kernel_arguments):
+            raise AutoGraphError(f"Argument number does not match the parameter list number", self.error_info(node))
         if not self._check_kernel_arguments(parameters, kernel_arguments):
-            raise TaichiCompilationError(f"Argument type error in kernel {kernel_fn.__name__}")
+            raise AutoGraphError(f"Argument type error in kernel \"{kernel_fn.__name__}\"", self.error_info(node))
         self.launch_contexts.append(Launch(kernel_fn, kernel_arguments))
 
     def _visit_attribute(self, node):
@@ -267,13 +311,13 @@ class AutoGraph:
             if node.id in self.func.__globals__:
                 return self.func.__globals__[node.id]
             else:
-                raise TaichiCompilationError(f"Undefined variable {node.id} in global scope")
+                raise AutoGraphError(f"Undefined variable \"{node.id}\" in global scope", self.error_info(node))
         elif isinstance(node, ast.Attribute):
             value = self._visit_attribute(node.value)
             if hasattr(value, node.attr):
                 return getattr(value, node.attr)
             else:
-                raise TaichiCompilationError(f"Undefined attribute {node.attr} in {value}")
+                raise AutoGraphError(f"Undefined attribute \"{node.attr}\" in \"{value}\"", self.error_info(node))
 
     def _visit_function(self, node):
         if isinstance(node, ast.Attribute):
@@ -291,7 +335,8 @@ class AutoGraph:
                 elif isinstance(arg, ast.Name) and arg.id == 'float':
                     args.append(impl.get_runtime().default_fp)
                 else:
-                    raise TaichiCompilationError(f"Unsupported arg type {type(arg)} in Taichi auto-graph")
+                    raise AutoGraphError(f"Unsupported arg type \"{type(arg)}\" in Taichi auto-graph",
+                                         self.error_info(node))
             kwargs = {}
             for keyword in node.keywords:
                 if isinstance(keyword.value, ast.Constant):
@@ -303,10 +348,12 @@ class AutoGraph:
                 elif isinstance(keyword.value, ast.Name) and keyword.value.id == 'float':
                     kwargs[keyword.arg] = impl.get_runtime().default_fp
                 else:
-                    raise TaichiCompilationError(f"Unsupported arg type {type(keyword.value)} in Taichi auto-graph")
+                    raise AutoGraphError(f"Unsupported arg type \"{type(keyword.value)}\" in Taichi auto-graph",
+                                         self.error_info(node))
             return func(*args, **kwargs)
         else:
-            raise TaichiCompilationError(f"Unsupported function type {type(node)} in Taichi auto-graph")
+            raise AutoGraphError(f"Unsupported function type \"{type(node)}\" in Taichi auto-graph",
+                                 self.error_info(node))
 
     def _cook_node_dtype(self, node):
         if isinstance(node, ast.Attribute):
@@ -318,7 +365,7 @@ class AutoGraph:
         elif isinstance(node, ast.Name) and node.id == 'float':
             return impl.get_runtime().default_fp
         else:
-            raise TaichiCompilationError(f"Invalid dtype {ast.unparse(node)}")
+            raise AutoGraphError(f"Invalid dtype \"{ast.unparse(node)}\"", self.error_info(node))
 
     def _cook_node_shape(self, node):
         if isinstance(node, ast.Tuple):
@@ -329,12 +376,11 @@ class AutoGraph:
             shape_list = [self._construct_expression(node)]
         return shape_list
 
-    @staticmethod
-    def _cook_node_integer(node):
+    def _cook_node_integer(self, node):
         if isinstance(node, ast.Constant):
             return node.value
         else:
-            raise TaichiCompilationError(f"n and m must be literal integer values")
+            raise AutoGraphError(f"n and m must be literal integer values", self.error_info(node))
 
     def _cook_allocation_ndarray(self, dtype, shape):
         dtype = self._cook_node_dtype(dtype)
@@ -397,48 +443,54 @@ class AutoGraph:
             self.allocated_arrays.append(array)
             self.variables[target.id] = array
         elif func == Vector or isinstance(func, VectorType):
-            raise TaichiCompilationError(f"Taichi vector initialization is not supported in auto-graph")
+            raise AutoGraphError(f"Taichi vector initialization is unsupported in auto-graph", self.error_info(target))
         elif func == Matrix or isinstance(func, MatrixType):
-            raise TaichiCompilationError(f"Taichi matrix initialization is not supported in auto-graph")
+            raise AutoGraphError(f"Taichi matrix initialization is unsupported in auto-graph", self.error_info(target))
         else:
-            raise TaichiCompilationError(f"Unsupported function call {type(func)} in Taichi auto-graph")
+            raise AutoGraphError(f"Unsupported function call \"{type(func)}\" in Taichi auto-graph",
+                                 self.error_info(target))
 
     def parse_alias_assignment(self, target, value):
         if value.id not in self.variables:
-            raise TaichiCompilationError(f"Undefined variable {value.id}")
+            raise AutoGraphError(f"Undefined variable {value.id}", self.error_info(target))
         self.variables[target.id] = self.variables[value.id]
 
     def _construct_expression(self, node):
         if isinstance(node, ast.Name):
             if node.id not in self.variables:
-                raise TaichiCompilationError(f"Undefined variable {node.id}")
+                raise AutoGraphError(f"Undefined variable {node.id}", self.error_info(node))
             if not isinstance(self.variables[node.id], IntArgValue):
                 if isinstance(self.variables[node.id], VectorArgValue):
-                    raise TaichiCompilationError(f"Taichi vector is unsupported in binary operation for auto-graph")
+                    raise AutoGraphError(f"Taichi vector is unsupported in binary operation for auto-graph",
+                                         self.error_info(node))
                 elif isinstance(self.variables[node.id], MatrixArgValue):
-                    raise TaichiCompilationError(f"Taichi matrix is unsupported in binary operation for auto-graph")
+                    raise AutoGraphError(f"Taichi matrix is unsupported in binary operation for auto-graph",
+                                         self.error_info(node))
                 else:
-                    raise TaichiCompilationError(f"Taichi ndarray is unsupported in binary operation for auto-graph")
+                    raise AutoGraphError(f"Taichi ndarray is unsupported in binary operation for auto-graph",
+                                         self.error_info(node))
             return self.variables[node.id]
         elif isinstance(node, ast.Constant):
             if not isinstance(node.value, int):
-                raise TaichiCompilationError(f"Literal value type {type(node)} is unsupported in Taichi auto-graph")
+                raise AutoGraphError(f"Literal value type \"{type(node)}\" is unsupported in Taichi auto-graph",
+                                     self.error_info(node))
             return IntArgValue(
                 arg_type=IntArgValue.Type.CONST,
                 const_value=node.value
             )
         elif isinstance(node, ast.Subscript):
             if not isinstance(node.slice, ast.Constant) or not isinstance(node.slice.value, int):
-                raise TaichiCompilationError(f"Subscript index must be an integer literal value")
+                raise AutoGraphError(f"Subscript index must be an integer literal value", self.error_info(node))
             if isinstance(node.value, ast.Attribute) and node.value.attr == 'shape':
                 assert isinstance(node.value.value, ast.Name)
                 if node.value.value.id not in self.variables:
-                    raise TaichiCompilationError(f"Undefined variable {node.value.value.id}")
+                    raise AutoGraphError(f"Undefined variable \"{node.value.value.id}\"", self.error_info(node))
                 array_var = self.variables[node.value.value.id]
                 if not isinstance(array_var, ArrayArgValue):
-                    raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
+                    raise AutoGraphError(f"Subscript is only supported for indexing Taichi Ndarray shapes",
+                                         self.error_info(node))
                 if node.slice.value < 0 or node.slice.value >= array_var.ndim:
-                    raise TaichiCompilationError(f"The index of shape is out of range")
+                    raise AutoGraphError(f"The index of shape is out of range", self.error_info(node))
                 if id(array_var) in self.graph_argument_ids:
                     shape_argument = IntArgValue(
                         arg_type=IntArgValue.Type.SHAPE_VAR,
@@ -450,14 +502,15 @@ class AutoGraph:
                 else:
                     return array_var.shape[node.slice.value]
             else:
-                raise TaichiCompilationError(f"Subscript is only supported for indexing Taichi Ndarray shapes")
+                raise AutoGraphError(f"Subscript is only supported for indexing Taichi Ndarray shapes",
+                                     self.error_info(node))
         elif isinstance(node, ast.BinOp):
             left = self._construct_expression(node.left)
             right = self._construct_expression(node.right)
             if isinstance(left, VectorArgValue) or isinstance(right, VectorArgValue):
-                raise TaichiCompilationError(f"Taichi vector is not supported in binary operation")
+                raise AutoGraphError(f"Taichi vector is not supported in binary operation", self.error_info(node))
             if isinstance(left, MatrixArgValue) or isinstance(right, MatrixArgValue):
-                raise TaichiCompilationError(f"Taichi matrix is not supported in binary operation")
+                raise AutoGraphError(f"Taichi matrix is not supported in binary operation", self.error_info(node))
             assert isinstance(left, IntArgValue) and isinstance(right, IntArgValue)
 
             if type(left) == type(right):
@@ -472,11 +525,14 @@ class AutoGraph:
                 elif isinstance(node.op, ast.Mod):
                     return left % right
                 else:
-                    raise TaichiCompilationError(f"Unsupported binary operator {type(node.op)} between {type(left)}")
+                    raise AutoGraphError(f"Unsupported binary operator \"{type(node.op)}\" between \"{type(left)}\"",
+                                         self.error_info(node))
             else:
-                raise TaichiCompilationError(f"Different types in binary operation: {type(left)} and {type(right)}")
+                raise AutoGraphError(f"Different types in binary operation: \"{type(left)}\" and \"{type(right)}\"",
+                                     self.error_info(node))
         else:
-            raise TaichiCompilationError(f"Value type {type(node)} is unsupported in binary operation")
+            raise AutoGraphError(f"Value type \"{type(node)}\" is unsupported in binary operation",
+                                 self.error_info(node))
 
     def parse_expression_assignment(self, target, value):
         self.variables[target.id] = self._construct_expression(value)
@@ -504,6 +560,7 @@ class AutoGraph:
         self.compiled_graph = self.graph_builder.compile()
 
     def compile(self):
+        self.extract_source()
         self.extract_arguments()
         self.extract_kernels()
         self.parse_function_body()
@@ -515,15 +572,15 @@ class AutoGraph:
 
         ArgValue.reset_buffer()
         if len(args) != len(self.graph_arguments):
-            raise TaichiCompilationError(f"Auto-graph takes {len(self.graph_arguments)} arguments but {len(args)} "
-                                         f"were given")
+            raise TaichiRuntimeError(f"Auto-graph takes \"{len(self.graph_arguments)}\" arguments but \"{len(args)}\" "
+                                     f"were given")
         for graph_argument_name in self.graph_arguments:
             if graph_argument_name not in args:
-                raise TaichiCompilationError(f"Graph argument {graph_argument_name} not found in given arguments")
+                raise TaichiRuntimeError(f"Graph argument \"{graph_argument_name}\" not found in given arguments")
             graph_argument = self.graph_arguments[graph_argument_name]
             if not graph_argument.check_match_instance(args[graph_argument_name]):
-                raise TaichiCompilationError(f"Argument type {type(args[graph_argument_name])} does not match the "
-                                             f"type of graph argument {graph_argument_name}")
+                raise TaichiRuntimeError(f"Argument type \"{type(args[graph_argument_name])}\" does not match the "
+                                         f"type of graph argument \"{graph_argument_name}\"")
             graph_argument.set_value(args[graph_argument_name])
         for shape_argument in self.shape_arguments:
             graph_array = shape_argument.shape_var_array.value
