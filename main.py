@@ -4,8 +4,7 @@ from auto_graph import auto_graph
 
 @auto_graph
 def fool_graph(arr: ti.types.ndarray(dtype=ti.f32, ndim=1)):
-    x = 2
-    y = 3
+    x, y = 2, 3
     dt = x + y
     dt_arr = ti.ndarray(dtype=ti.f32, shape=arr.shape[0])
     kernel_delta(dt, dt_arr)

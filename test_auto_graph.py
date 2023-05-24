@@ -222,3 +222,27 @@ def test_matrix():
     graph_matrix_2.run({"delta": delta, "arr": arr})
     np_arr = np.ones((3, 4, 2, 2), dtype=np.float32)
     assert np.array_equal(arr.to_numpy(), np_arr)
+
+
+@ti.kernel
+def kernel_tuple(delta: ti.i32, arr: ti.types.ndarray(dtype=ti.i32, ndim=2)):
+    for i in ti.grouped(arr):
+        arr[i] = arr[i] + delta
+
+
+@auto_graph
+def graph_tuple(arr: ti.types.ndarray(dtype=ti.i32, ndim=2)):
+    x, y = arr.shape[0], arr.shape[1]
+    kernel_tuple(x + y, arr)
+    z = x + y
+    kernel_tuple(z, arr)
+    delta = z
+    kernel_tuple(delta, arr)
+
+
+def test_tuple():
+    arr = ti.ndarray(dtype=ti.i32, shape=(3, 4))
+    graph_tuple.compile()
+    graph_tuple.run({"arr": arr})
+    np_arr = np.ones((3, 4), dtype=np.int32) * 21
+    assert np.array_equal(arr.to_numpy(), np_arr)

@@ -195,22 +195,42 @@ class AutoGraph:
             if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
                 self.parse_kernel_launch(statement.value)
             elif isinstance(statement, ast.Assign):
-                if len(statement.targets) != 1:
-                    raise TaichiCompilationError(f"More than one target is unsupported in Taichi auto-graph")
-                assert isinstance(statement.targets[0], ast.Name)
-                if isinstance(statement.value, ast.Call):
-                    self.parse_call_assignment(statement)
-                elif isinstance(statement.value, ast.Name):
-                    self.parse_alias_assignment(statement)
-                elif isinstance(statement.value, ast.Constant):
-                    self.parse_expression_assignment(statement)
-                elif isinstance(statement.value, ast.Subscript):
-                    self.parse_expression_assignment(statement)
-                elif isinstance(statement.value, ast.BinOp):
-                    self.parse_expression_assignment(statement)
+                assert len(statement.targets) == 1
+                target = statement.targets[0]
+                value = statement.value
+                if isinstance(target, ast.Name):
+                    if isinstance(value, ast.Call):
+                        self.parse_call_assignment(target, value)
+                    elif isinstance(value, ast.Name):
+                        self.parse_alias_assignment(target, value)
+                    elif isinstance(value, ast.Constant):
+                        self.parse_expression_assignment(target, value)
+                    elif isinstance(value, ast.Subscript):
+                        self.parse_expression_assignment(target, value)
+                    elif isinstance(value, ast.BinOp):
+                        self.parse_expression_assignment(target, value)
+                    else:
+                        raise TaichiCompilationError(f"Assignment value type {type(value)} is unsupported")
+                elif isinstance(target, ast.Tuple):
+                    assert isinstance(statement.value, ast.Tuple)
+                    if len(target.elts) != len(statement.value.elts):
+                        raise TaichiCompilationError(f"Assignment values number does not match targets number")
+                    for target_item, value_item in zip(target.elts, value.elts):
+                        assert isinstance(target_item, ast.Name)
+                        if isinstance(value_item, ast.Call):
+                            self.parse_call_assignment(target_item, value_item)
+                        elif isinstance(value_item, ast.Name):
+                            self.parse_alias_assignment(target_item, value_item)
+                        elif isinstance(value_item, ast.Constant):
+                            self.parse_expression_assignment(target_item, value_item)
+                        elif isinstance(value_item, ast.Subscript):
+                            self.parse_expression_assignment(target_item, value_item)
+                        elif isinstance(value_item, ast.BinOp):
+                            self.parse_expression_assignment(target_item, value_item)
+                        else:
+                            raise TaichiCompilationError(f"Assignment value type {type(value_item)} is unsupported")
                 else:
-                    raise TaichiCompilationError(f"Assignment value type {type(statement.value)} is unsupported in "
-                                                 f"Taichi auto-graph")
+                    raise TaichiCompilationError(f"Assignment target type {type(target)} is unsupported")
             else:
                 raise TaichiCompilationError(f"The statement in Taichi auto-graph {self.func.__name__} must be "
                                              f"assignments or kernel launch_contexts (without return value): "
@@ -343,40 +363,40 @@ class AutoGraph:
         shape = self._cook_node_shape(shape)
         return Allocation(dtype=taichi.types.matrix(n=n, m=m, dtype=dtype), shape=shape)
 
-    def parse_call_assignment(self, node):
-        func = self._visit_function(node.value.func)
+    def parse_call_assignment(self, target, value):
+        func = self._visit_function(value.func)
         if func == ndarray:
-            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            args, kwargs = value.args, {keyword.arg: keyword.value for keyword in value.keywords}
             array = ArrayArgValue(
                 arg_type=ArrayArgValue.Type.ALLOC_VAR,
                 alloc_var=self._cook_allocation_ndarray(*args, **kwargs)
             )
             self.allocated_arrays.append(array)
-            self.variables[node.targets[0].id] = array
+            self.variables[target.id] = array
         elif func == ScalarNdarray:
-            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            args, kwargs = value.args, {keyword.arg: keyword.value for keyword in value.keywords}
             array = ArrayArgValue(
                 arg_type=ArrayArgValue.Type.ALLOC_VAR,
                 alloc_var=self._cook_allocation_scalar_ndarray(*args, **kwargs)
             )
             self.allocated_arrays.append(array)
-            self.variables[node.targets[0].id] = array
+            self.variables[target.id] = array
         elif func == VectorNdarray or func == Vector.ndarray:
-            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            args, kwargs = value.args, {keyword.arg: keyword.value for keyword in value.keywords}
             array = ArrayArgValue(
                 arg_type=ArrayArgValue.Type.ALLOC_VAR,
                 alloc_var=self._cook_allocation_vector_ndarray(*args, **kwargs)
             )
             self.allocated_arrays.append(array)
-            self.variables[node.targets[0].id] = array
+            self.variables[target.id] = array
         elif func == MatrixNdarray or func == Matrix.ndarray:
-            args, kwargs = node.value.args, {keyword.arg: keyword.value for keyword in node.value.keywords}
+            args, kwargs = value.args, {keyword.arg: keyword.value for keyword in value.keywords}
             array = ArrayArgValue(
                 arg_type=ArrayArgValue.Type.ALLOC_VAR,
                 alloc_var=self._cook_allocation_matrix_ndarray(*args, **kwargs)
             )
             self.allocated_arrays.append(array)
-            self.variables[node.targets[0].id] = array
+            self.variables[target.id] = array
         elif func == Vector or isinstance(func, VectorType):
             raise TaichiCompilationError(f"Taichi vector initialization is not supported in auto-graph")
         elif func == Matrix or isinstance(func, MatrixType):
@@ -384,10 +404,10 @@ class AutoGraph:
         else:
             raise TaichiCompilationError(f"Unsupported function call {type(func)} in Taichi auto-graph")
 
-    def parse_alias_assignment(self, node):
-        if node.value.id not in self.variables:
-            raise TaichiCompilationError(f"Undefined variable {node.value.id}")
-        self.variables[node.targets[0].id] = self.variables[node.value.id]
+    def parse_alias_assignment(self, target, value):
+        if value.id not in self.variables:
+            raise TaichiCompilationError(f"Undefined variable {value.id}")
+        self.variables[target.id] = self.variables[value.id]
 
     def _construct_expression(self, node):
         if isinstance(node, ast.Name):
@@ -459,8 +479,8 @@ class AutoGraph:
         else:
             raise TaichiCompilationError(f"Value type {type(node)} is unsupported in binary operation")
 
-    def parse_expression_assignment(self, node):
-        self.variables[node.targets[0].id] = self._construct_expression(node.value)
+    def parse_expression_assignment(self, target, value):
+        self.variables[target.id] = self._construct_expression(value)
 
     def build_compiled_graph(self):
         self.graph_builder = GraphBuilder()
