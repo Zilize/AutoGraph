@@ -1,8 +1,6 @@
 from enum import Enum
 from auto_graph.allocation import Allocation
 
-import taichi as ti
-import numpy as np
 from taichi.types import int32
 from taichi.types.ndarray_type import NdarrayType
 from taichi.lang.matrix import VectorType, MatrixType

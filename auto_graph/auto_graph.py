@@ -393,9 +393,13 @@ class AutoGraph:
         if isinstance(node, ast.Name):
             if node.id not in self.variables:
                 raise TaichiCompilationError(f"Undefined variable {node.id}")
-            if not isinstance(self.variables[node.id], IntArgValue) and \
-                    not isinstance(self.variables[node.id], MatrixArgValue):
-                raise TaichiCompilationError(f"Taichi Ndarray is unsupported in binary operation")
+            if not isinstance(self.variables[node.id], IntArgValue):
+                if isinstance(self.variables[node.id], VectorArgValue):
+                    raise TaichiCompilationError(f"Taichi vector is unsupported in binary operation for auto-graph")
+                elif isinstance(self.variables[node.id], MatrixArgValue):
+                    raise TaichiCompilationError(f"Taichi matrix is unsupported in binary operation for auto-graph")
+                else:
+                    raise TaichiCompilationError(f"Taichi ndarray is unsupported in binary operation for auto-graph")
             return self.variables[node.id]
         elif isinstance(node, ast.Constant):
             if not isinstance(node.value, int):
