@@ -1,5 +1,4 @@
 from enum import Enum
-from auto_graph.allocation import Allocation
 
 from taichi.types import int32
 from taichi.types.ndarray_type import NdarrayType
@@ -7,6 +6,14 @@ from taichi.lang.matrix import VectorType, MatrixType
 from taichi.lang.exception import TaichiRuntimeTypeError, TaichiCompilationError
 from taichi.lang._ndarray import Ndarray
 from taichi import ScalarNdarray, VectorNdarray, MatrixNdarray, Vector, Matrix
+
+
+class Allocation:
+    def __init__(self, dtype, shape):
+        super().__init__()
+        self.dtype = dtype
+        self.shape = shape
+        self.ndim = len(shape)
 
 
 class ArgValue:

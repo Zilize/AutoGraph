@@ -23,8 +23,7 @@ from taichi.types.ndarray_type import NdarrayType
 from taichi.graph import Arg, ArgKind, GraphBuilder
 from taichi.aot import Module
 
-from auto_graph.arg_value import ArgValue, IntArgValue, VectorArgValue, MatrixArgValue, ArrayArgValue
-from auto_graph.allocation import Allocation
+from auto_graph.arg_value import Allocation, ArgValue, IntArgValue, VectorArgValue, MatrixArgValue, ArrayArgValue
 
 
 class Launch:
@@ -168,7 +167,7 @@ class AutoGraph:
                         graph_var_m=annotation.m,
                         graph_var_dtype=annotation.dtype
                     )
-                elif id(annotation) in [id(int32), id(int)]:
+                elif id(annotation) == id(int32):
                     self.graph_arguments[arg_name] = IntArgValue(
                         arg_type=IntArgValue.Type.GRAPH_VAR,
                         graph_var_name=arg_name
