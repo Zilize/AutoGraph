@@ -2,7 +2,7 @@ import numpy as np
 import taichi as ti
 from auto_graph import auto_graph
 
-arch = ti.cpu
+arch = ti.vulkan
 ti.init(arch=arch)
 
 
