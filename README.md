@@ -1,12 +1,12 @@
 # AutoGraph
 
-## Introduction
-
 AutoGraph is a component for automatically compiling and launching Taichi compute graph. This repository provides a prototype implementation for AutoGraph. The execution logic of AutoGraph is described as follows:
 
 - AutoGraph parsing, just-in-time execution in Python environment
 - Export meta-data of the AutoGraph, collaborating with existing compute graph components in Taichi 
 - Automatically deploy and launch AutoGraph in C++ environment, using Taichi C-API
+
+## Feature
 
 You can add the Python decorator `@auto_graph` to the Python function corresponding to the compute graph. The function will be automatically parsed and transformed into internal data structures for just-in-time execution and kernel export. Currently, AutoGraph does not support control flow (e.g., if-else, for-loop, while-loop), while it supports the following basic and useful features:
 
